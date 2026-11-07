@@ -1,0 +1,12 @@
+node_modules
+data
+.git
+.gitignore
+.vscode
+test
+struct
+core_test.js
+question_gen.js
+npm-debug.log*
+*.tar.gz
+.env

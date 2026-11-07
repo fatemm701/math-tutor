@@ -1,18 +1,20 @@
 {
   "name": "poly-drill",
   "version": "1.0.0",
-  "description": "",
-  "main": "core_test.js",
+  "description": "多项式化简练习：浏览器端出题判分，服务端只存账号与做题记录",
+  "main": "backend/server.js",
   "scripts": {
     "test": "node test/engine.test.js && node test/ui.smoke.js && node test/teacher.smoke.js && node test/api.test.js",
     "start": "node backend/server.js"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "express": "^5.3.0",
-    "mathjs": "^15.2.0"
+    "express": "^5.3.0"
   }
 }

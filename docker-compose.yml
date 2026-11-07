@@ -1,0 +1,33 @@
+services:
+  poly-drill:
+    build: .
+    image: poly-drill:latest
+    container_name: poly-drill
+    restart: unless-stopped
+    ports:
+      # 宿主端口用 HOST_PORT 覆盖（服务器 3000 已被 open-webui 占用）
+      - "${HOST_PORT:-3001}:3000"
+    environment:
+      TZ: Asia/Shanghai
+      PORT: "3000"
+      DATA_DIR: /app/data
+      # 纯 HTTP 部署保持 0；上了 HTTPS 反代再改成 1
+      COOKIE_SECURE: "${COOKIE_SECURE:-0}"
+      # 只有在反代后面才设 1，否则限速的 IP 判断可被伪造头绕过
+      TRUST_PROXY: "${TRUST_PROXY:-0}"
+      TEACHER_INVITE: "${TEACHER_INVITE:-}"
+    volumes:
+      # db.json 只有文件锁级别的"无锁"实现，务必单实例运行
+      - ./data:/app/data
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"

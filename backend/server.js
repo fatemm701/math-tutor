@@ -9,7 +9,9 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 app.disable('x-powered-by');
-app.set('trust proxy', 1);                       // 放在 Nginx/Caddy 后面时能识别 HTTPS
+// 只有放在 Nginx/Caddy 后面（TRUST_PROXY=1）才相信代理头。
+// 直接对公网暴露时必须保持关闭，否则客户端伪造 X-Forwarded-For 就能绕过登录失败限速。
+if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
 app.use(express.json({ limit: '64kb' }));
 // 本地第三方库（KaTeX / mathjs）：文件名基本不变，给长缓存，学生设备只下载一次
 app.use('/vendor', express.static(path.join(__dirname, '..', 'frontend', 'vendor'), {

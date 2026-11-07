@@ -1,20 +1,26 @@
 poly-drill/
 ├─ backend/
-│  ├─ server.js          # Express 服务入口
-│  ├─ database.js        # SQLite 初始化与封装
-│  ├─ routes.js          # API 路由 (登录、提交答案、获取数据)
-│  └─ core/
-│     └─ mathEngine.js   # 基于 mathjs/Algebrite 封装的判卷与出题逻辑
+│  ├─ server.js          # Express 入口：静态页面 + 账号/记录 API + /api/health
+│  ├─ store.js           # data/db.json 读写（临时文件 + rename 原子落盘、会话清理）
+│  ├─ auth.js            # scrypt 密码哈希、会话 Cookie、登录/老师权限中间件
+│  └─ routes/
+│     ├─ auth.js         # 注册 / 登录 / 登出 / 当前用户（含登录失败限速）
+│     ├─ attempts.js     # 做题记录上报 / 查自己的记录
+│     └─ teacher.js      # 看板数据（学生汇总 / 明细 / 我自己）+ 直接添加学生
 ├─ frontend/
-│  ├─ index.html         # 登录/注册页
-│  ├─ practice.html      # 学生答题页 (引入 KaTeX)
-│  ├─ dashboard.html     # 老师看板
-│  ├─ css/
-│  │  └─ style.css       
-│  └─ js/
-│     ├─ practice.js     # 软键盘交互、请求出题与判卷
-│     └─ dashboard.js    # 图表与数据渲染
+│  ├─ index.html         # 登录 / 注册页
+│  ├─ practice.html      # 学生答题页（出题、判分、分步解析、软键盘全在这一个文件里）
+│  ├─ teacher.html       # 老师看板
+│  └─ vendor/            # 本地 KaTeX + mathjs（离线可用，不依赖 CDN）
+├─ test/
+│  ├─ engine.test.js     # 出题/判卷引擎（从 practice.html 抽内联脚本跑）
+│  ├─ ui.smoke.js        # 交互冒烟（软键盘、提交、提示、看解析、默认难度）
+│  ├─ teacher.smoke.js   # 看板冒烟
+│  └─ api.test.js        # 接口测试（真实起服务、临时 DATA_DIR）
 ├─ data/
-│  └─ poly.db            # SQLite 数据库文件 (运行时自动生成)
-├─ package.json          # 依赖管理
-└─ start.cmd             # 启动脚本
+│  └─ db.json            # 运行时生成，已 gitignore；Docker 里挂在 /app/data
+├─ Dockerfile            # node:22-alpine，非 root 运行，内置健康检查
+├─ docker-compose.yml    # 3001:3000、./data 挂载、256m 上限、日志滚动
+├─ .env.example          # 端口/口令/HTTPS 开关示例（复制成 .env）
+├─ DEPLOY.md             # 部署、更新、备份、排错
+└─ package.json          # 唯一运行时依赖：express
