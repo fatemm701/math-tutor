@@ -137,6 +137,15 @@ new Function('window', 'document', 'katex', 'localStorage', 'confirm', 'setTimeo
 
 const fails = [];
 const check = (cond, msg) => { if (!cond) fails.push(msg); };
+// 取某一行的第 i 个单元格（行结构缺失时返回 null，避免测试自己崩掉、掩盖真正的失败）
+const cellText = (row, i) => {
+    const cell = row && row.children ? row.children[i || 0] : null;
+    return cell ? String(cell.textContent) : null;
+};
+const cellTex = (row, i) => {
+    const cell = row && row.children ? row.children[i || 0] : null;
+    return cell && cell._tex !== undefined && cell._tex !== null ? String(cell._tex) : null;
+};
 const clickKey = (name) => (keyboard.handlers.click || []).forEach(fn => fn({ target: keys[name] }));
 const type = (s) => [...s].forEach(ch => {
     if (!keys['k_' + ch]) throw new Error('键盘上没有 ' + ch);
@@ -177,9 +186,9 @@ check(keys.submit.textContent === '下一题' && keys.submit.dataset.action === 
     '答对后应停在本题等「下一题」，实际按钮: ' + keys.submit.textContent);
 const okRows = stepsEl.children;
 check(okRows.length >= 3, '答对的过程应有标题 + 至少 2 步，实际 ' + okRows.length);
-check(!okRows[1].classList.contains('step-mine'), '答对时不该出现「你的答案」对照行');
-const okLast = okRows[okRows.length - 1].children[1];
-check(String(okLast._tex).replace(/\s+/g, '') === FixedQuestion.answer, '最后一步应等于答案: ' + okLast._tex);
+check(!(okRows[1] && okRows[1].classList.contains('step-mine')), '答对时不该出现「你的答案」对照行');
+const okLastTex = cellTex(okRows[okRows.length - 1], 1);
+check(okLastTex !== null && okLastTex.replace(/\s+/g, '') === FixedQuestion.answer, '最后一步应等于答案: ' + okLastTex);
 
 // 4. 一题结束后键盘无效
 const beforeLock = inEl._tex;
@@ -205,9 +214,9 @@ check(/错了两次/.test(fbEl.textContent), '二次错反馈不对: ' + fbEl.te
 check(keys.submit.textContent === '下一题', '错两次后应变成下一题');
 const wrongRows = stepsEl.children;
 const wrongMine = wrongRows[1];
-check(wrongMine && wrongMine.classList.contains('step-mine'), '错两次时应显示「你的答案」对照行');
-check(wrongMine.children[0].textContent === '你的答案', '对照行标签不对: ' + wrongMine.children[0].textContent);
-check(String(wrongMine.children[1]._tex) === '555', '对照行应显示学生原答案，实际: ' + wrongMine.children[1]._tex);
+check(!!(wrongMine && wrongMine.classList.contains('step-mine')), '错两次时应显示「你的答案」对照行');
+check(cellText(wrongMine, 0) === '你的答案', '对照行标签不对: ' + cellText(wrongMine, 0));
+check(cellTex(wrongMine, 1) === '555', '对照行应显示学生原答案，实际: ' + cellTex(wrongMine, 1));
 check(wrongRows.length >= 4, '应含标题 + 对照行 + 至少 2 步，实际 ' + wrongRows.length);
 
 // 7. 错两次后点下一题换题
@@ -222,13 +231,13 @@ check(stepsEl.hidden === false, '看解析应展开完整过程');
 check(keys.submit.textContent === '下一题', '看解析后应停在本题等「下一题」，实际: ' + keys.submit.textContent);
 const giveRows = stepsEl.children;
 const giveMine = giveRows[1];
-check(giveMine && giveMine.classList.contains('step-mine'), '看解析时应显示「你的答案」对照行');
-check(String(giveMine.children[1]._tex) === '9x+9x', '对照行应显示学生原答案，实际: ' + giveMine.children[1]._tex);
+check(!!(giveMine && giveMine.classList.contains('step-mine')), '看解析时应显示「你的答案」对照行');
+check(cellTex(giveMine, 1) === '9x+9x', '对照行应显示学生原答案，实际: ' + cellTex(giveMine, 1));
 check(giveRows.length >= 4, '看解析应含标题 + 对照行 + 至少 2 步，实际 ' + giveRows.length);
 const norm = (s) => String(s).replace(/\s+/g, '').replace(/\\cdot/g, '*');
-const giveLast = giveRows[giveRows.length - 1].children[1];
-check(String(giveLast._tex).length > 0, '看解析的最后一步不应为空');
-check(norm(inEl._tex) === norm(giveLast._tex), '看解析时输入区应显示标准答案，实际: ' + inEl._tex);
+const giveLastTex = cellTex(giveRows[giveRows.length - 1], 1);
+check(giveLastTex !== null && giveLastTex.length > 0, '看解析的最后一步不应为空');
+check(giveLastTex !== null && norm(inEl._tex) === norm(giveLastTex), '看解析时输入区应显示标准答案，实际: ' + inEl._tex);
 
 // 9. 看解析后键盘无效
 const beforeLock2 = inEl._tex;
