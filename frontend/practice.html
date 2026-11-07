@@ -156,7 +156,21 @@
         // 在浏览器加载完 KaTeX 后执行
         window.onload = () => {
             const questionStr = "2x(x - 3) - (x^2 - 4x)"; // 模拟我们上一节的出题函数生成的题目
-            let currentInput = ""; // 核心状态：保存标准数学字符串，用于传给 math.js
+            let currentQuestion = ""; // 保存当前拿到的题面
+
+            // 页面加载时自动请求一道题目
+            async function fetchQuestion(level = 2) {
+                const res = await fetch(`/api/question?level=${level}`);
+                const json = await res.json();
+                if (json.success) {
+                    currentQuestion = json.data.question;
+                    currentInput = ""; // 清空输入框
+
+                    // 渲染题面和空输入框
+                    katex.render(currentQuestion, questionEl, { displayMode: true });
+                    renderInput();
+                }
+            }
 
             const questionEl = document.getElementById("question-display");
             const inputEl = document.getElementById("input-display");
@@ -183,7 +197,7 @@
             }
 
             // 3. 软键盘事件代理
-            document.getElementById("keyboard").addEventListener("click", (e) => {
+            document.getElementById("keyboard").addEventListener("click", async (e) => {
                 const btn = e.target.closest('.key');
                 if (!btn) return;
 
@@ -201,8 +215,26 @@
                     }
                 } else if (action === "submit") {
                     if (currentInput === "") return alert("请先输入答案");
-                    // 这里将是与后端判卷 API 交互的地方
-                    alert(`将向后端发送验证：\n题目: ${questionStr}\n学生答案: ${currentInput}`);
+
+                    const res = await fetch('/api/evaluate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            question: currentQuestion,
+                            studentAnswer: currentInput
+                        })
+                    });
+
+                    const json = await res.json();
+                    if (json.success) {
+                        const result = json.data;
+                        if (result.status === 'correct') {
+                            alert('🎉 ' + result.msg);
+                            fetchQuestion(); // 做对了自动进入下一题
+                        } else {
+                            alert('❌ ' + result.msg);
+                        }
+                    }
                 }
 
                 renderInput();
