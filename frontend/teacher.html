@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>整式化简练习 · 老师看板</title>
+    <!-- 本地 KaTeX：题目和答案按数学格式显示，断网也能用 -->
+    <link rel="stylesheet" href="vendor/katex/katex.min.css">
+    <script src="vendor/katex/katex.min.js"></script>
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --bg: #F9FAFB;
+            --line: #E5E7EB;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: #111827;
+        }
+
+        .topbar {
+            width: 100%;
+            max-width: 1080px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 14px;
+            font-size: 0.85rem;
+            color: #4B5563;
+        }
+
+        .topbar .who {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .topbar .actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 0 0 auto;
+        }
+
+        .topbar button,
+        .topbar a.btn {
+            font-family: inherit;
+            font-size: 0.8rem;
+            color: #4B5563;
+            background: #fff;
+            border: 1px solid #D1D5DB;
+            border-radius: 6px;
+            padding: 4px 10px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+
+        .topbar a.btn.primary {
+            color: #fff;
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+
+        .wrap {
+            width: 100%;
+            max-width: 1080px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* 顶部汇总卡片 */
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+            gap: 10px;
+        }
+
+        .card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 12px 14px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
+        }
+
+        .card .k {
+            font-size: 0.75rem;
+            color: #6B7280;
+        }
+
+        .card .v {
+            font-size: 1.3rem;
+            font-weight: bold;
+            margin-top: 4px;
+        }
+
+        .panel {
+            background: #fff;
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
+        }
+
+        .section-head {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+
+        .section-head h2 {
+            font-size: 1rem;
+            margin: 0;
+        }
+
+        .hint {
+            font-size: 0.78rem;
+            color: #9CA3AF;
+        }
+
+        /* 表格 */
+        .table-wrap {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        th,
+        td {
+            padding: 8px 10px;
+            text-align: left;
+            white-space: nowrap;
+            border-bottom: 1px solid var(--line);
+        }
+
+        thead th {
+            color: #6B7280;
+            font-weight: normal;
+            font-size: 0.75rem;
+        }
+
+        tbody tr.clickable {
+            cursor: pointer;
+        }
+
+        tbody tr.clickable:hover {
+            background: #F9FAFB;
+        }
+
+        td.num,
+        th.num {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        td.name {
+            font-weight: bold;
+        }
+
+        .lv-head {
+            font-size: 0.72rem;
+            color: #9CA3AF;
+            font-weight: normal;
+        }
+
+        button.mini {
+            font-family: inherit;
+            font-size: 0.75rem;
+            color: var(--primary);
+            background: #EEF2FF;
+            border: none;
+            border-radius: 6px;
+            padding: 3px 9px;
+            cursor: pointer;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 0.74rem;
+        }
+
+        .tag-correct { background: #ECFDF5; color: #047857; }
+        .tag-wrong { background: #FEF2F2; color: #B91C1C; }
+        .tag-hinted { background: #FFFBEB; color: #B45309; }
+        .tag-revealed { background: #EEF2FF; color: #4338CA; }
+
+        .empty {
+            margin: 0;
+            padding: 20px 0;
+            text-align: center;
+            color: #9CA3AF;
+            font-size: 0.85rem;
+        }
+
+        /* 添加学生 */
+        .add-box {
+            margin-top: 16px;
+            padding-top: 14px;
+            border-top: 1px dashed var(--line);
+        }
+
+        .add-box h3 {
+            font-size: 0.9rem;
+            margin: 0 0 8px;
+            color: #374151;
+        }
+
+        .add-form {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .add-form input {
+            flex: 1 1 180px;
+            min-width: 140px;
+            padding: 8px 10px;
+            font-size: 0.9rem;
+            font-family: inherit;
+            border: 1px solid #D1D5DB;
+            border-radius: 8px;
+            outline: none;
+            box-sizing: border-box;
+        }
+
+        .add-form input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+        }
+
+        .add-form button {
+            flex: 0 0 auto;
+            padding: 8px 18px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            font-weight: bold;
+            color: #fff;
+            background: var(--primary);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .add-form button:disabled {
+            opacity: 0.6;
+            cursor: default;
+        }
+
+        .msg {
+            margin: 8px 0 0;
+            min-height: 18px;
+            font-size: 0.82rem;
+            color: #EF4444;
+        }
+
+        .msg.ok {
+            color: #047857;
+        }
+
+        /* 明细视图 */
+        .detail-head {
+            align-items: center;
+        }
+
+        .link-btn {
+            font-family: inherit;
+            font-size: 0.85rem;
+            font-weight: bold;
+            color: var(--primary);
+            background: none;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+        }
+
+        /* 学生误入：只有老师能看 */
+        .denied {
+            background: #fff;
+            border-radius: 12px;
+            padding: 28px 20px;
+            text-align: center;
+            color: #4B5563;
+            font-size: 0.9rem;
+            line-height: 1.9;
+        }
+
+        .denied a {
+            color: var(--primary);
+            font-weight: bold;
+            text-decoration: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="topbar">
+        <span class="who" id="who">加载中…</span>
+        <span class="actions">
+            <a class="btn primary" href="practice.html">去练习</a>
+            <button type="button" id="refresh">刷新</button>
+            <button type="button" id="logout">退出</button>
+        </span>
+    </div>
+
+    <div class="wrap">
+        <div class="cards" id="summary"></div>
+
+        <div class="denied" id="denied" hidden>
+            当前账号是学生，看板只有老师能打开。<br>
+            <a href="practice.html">去练习 →</a>
+        </div>
+
+        <section class="panel" id="list-view">
+            <div class="section-head">
+                <h2>学生</h2>
+                <span class="hint" id="updated"></span>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>学生</th>
+                            <th class="num">记录</th>
+                            <th class="num">正确率</th>
+                            <th class="num">错</th>
+                            <th class="num">提示</th>
+                            <th class="num">看解析</th>
+                            <th class="num">平均用时</th>
+                            <th class="num">最近</th>
+                            <th class="num lv-head">① 入门</th>
+                            <th class="num lv-head">② 基础</th>
+                            <th class="num lv-head">③ 进阶</th>
+                            <th class="num lv-head">④ 挑战</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="students-body"></tbody>
+                </table>
+            </div>
+            <p class="empty" id="list-empty" hidden></p>
+
+            <div class="add-box">
+                <h3>添加学生</h3>
+                <form class="add-form" id="add-form">
+                    <input id="add-name" type="text" maxlength="20" placeholder="学生姓名" required autocomplete="off">
+                    <input id="add-pass" type="password" maxlength="64" placeholder="初始密码（至少 6 位）" required
+                        autocomplete="new-password">
+                    <button type="submit" id="add-btn">添加</button>
+                </form>
+                <p class="msg" id="add-msg"></p>
+            </div>
+        </section>
+
+        <section class="panel" id="detail-view" hidden>
+            <div class="section-head detail-head">
+                <button type="button" class="link-btn" id="back">← 返回列表</button>
+                <h2 id="detail-title">做题记录</h2>
+            </div>
+            <p class="hint" id="detail-msg"></p>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>时间</th>
+                            <th>难度</th>
+                            <th>题目</th>
+                            <th>学生答案</th>
+                            <th>正确答案</th>
+                            <th>结果</th>
+                            <th class="num">用时</th>
+                        </tr>
+                    </thead>
+                    <tbody id="detail-body"></tbody>
+                </table>
+            </div>
+            <p class="empty" id="detail-empty" hidden>这个学生还没有做题记录。</p>
+        </section>
+    </div>
+
+    <script>
+        const $ = (id) => document.getElementById(id);
+        const LEVEL_LABEL = { 1: '① 入门', 2: '② 基础', 3: '③ 进阶', 4: '④ 挑战' };
+
+        let currentUser = null;
+        let students = [];
+
+        // ---------- 小工具 ----------
+        async function api(path, options) {
+            const res = await fetch(path, Object.assign({ credentials: 'same-origin' }, options || {}));
+            if (res.status === 401) {
+                location.replace('index.html');
+                throw new Error('请先登录');
+            }
+            let json = null;
+            try { json = await res.json(); } catch (e) { json = null; }
+            if (!res.ok || !json || !json.success) {
+                throw new Error((json && json.msg) || ('请求失败（HTTP ' + res.status + '）'));
+            }
+            return json.data;
+        }
+
+        // KaTeX 不可用时退化成纯文本，保证表里总能看清题目
+        function renderMath(el, text) {
+            const value = (text === null || text === undefined) ? '' : String(text);
+            el.textContent = value;
+            if (typeof katex === 'undefined') return;
+            try {
+                katex.render(value, el, { displayMode: false, throwOnError: false });
+            } catch (err) {
+                el.textContent = value;
+            }
+        }
+
+        function pad2(n) { return String(n).padStart(2, '0'); }
+
+        function fmtMs(ms) {
+            if (!ms) return '—';
+            const total = Math.round(ms / 1000);
+            if (total < 60) return total + ' 秒';
+            const m = Math.floor(total / 60);
+            const s = total % 60;
+            return s ? m + ' 分 ' + s + ' 秒' : m + ' 分';
+        }
+
+        function fmtTime(ts) {
+            if (!ts) return '—';
+            const d = new Date(ts);
+            const now = new Date();
+            const hm = pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+            const sameDay = d.getFullYear() === now.getFullYear()
+                && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+            if (sameDay) return '今天 ' + hm;
+            return pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' + hm;
+        }
+
+        function fmtPct(v) { return (v === null || v === undefined) ? '—' : v + '%'; }
+
+        function td(tr, text, className) {
+            const cell = document.createElement('td');
+            cell.textContent = (text === null || text === undefined) ? '' : String(text);
+            if (className) cell.className = className;
+            tr.appendChild(cell);
+            return cell;
+        }
+
+        function tdMath(tr, text, className) {
+            const cell = document.createElement('td');
+            if (className) cell.className = className;
+            renderMath(cell, text === '' || text === null || text === undefined ? '（空）' : text);
+            tr.appendChild(cell);
+            return cell;
+        }
+
+        // 与后端 bucketOf 保持一致：看解析 > 用提示 > 独立对/错
+        function bucketOf(attempt) {
+            if (attempt.revealed) return { text: '看解析', cls: 'tag-revealed' };
+            if (attempt.usedHint) {
+                return { text: attempt.result === 'correct' ? '提示后对' : '提示后错', cls: 'tag-hinted' };
+            }
+            if (attempt.result === 'correct') return { text: '独立对', cls: 'tag-correct' };
+            if (attempt.result === 'partial') return { text: '没化简完', cls: 'tag-hinted' };
+            if (attempt.result === 'error') return { text: '格式错', cls: 'tag-hinted' };
+            return { text: '错', cls: 'tag-wrong' };
+        }
+
+        // ---------- 渲染 ----------
+        function renderSummary(sum) {
+            const cards = $('summary');
+            cards.innerHTML = '';
+            const accuracy = sum.scored ? Math.round((sum.correct / sum.scored) * 1000) / 10 : null;
+            const avgMs = sum.total ? Math.round(sum.ms / sum.total) : 0;
+            const items = [
+                { k: '学生', v: students.length + ' 人' },
+                { k: '总记录', v: sum.total + ' 条' },
+                { k: '正确率（不含提示/看解析）', v: fmtPct(accuracy) },
+                { k: '独立做对', v: sum.correct + ' 题' },
+                { k: '平均用时', v: sum.total ? fmtMs(avgMs) : '—' },
+                { k: '用过提示', v: sum.hinted + ' 题' },
+                { k: '看解析', v: sum.revealed + ' 题' }
+            ];
+            items.forEach(item => {
+                const box = document.createElement('div');
+                box.className = 'card';
+                const k = document.createElement('div');
+                k.className = 'k';
+                k.textContent = item.k;
+                const v = document.createElement('div');
+                v.className = 'v';
+                v.textContent = item.v;
+                box.appendChild(k);
+                box.appendChild(v);
+                cards.appendChild(box);
+            });
+        }
+
+        function renderStudents() {
+            const body = $('students-body');
+            body.innerHTML = '';
+
+            const sum = { total: 0, correct: 0, wrong: 0, hinted: 0, revealed: 0, scored: 0, ms: 0 };
+            students.forEach(item => {
+                const st = item.stats;
+                sum.total += st.total;
+                sum.correct += st.correct;
+                sum.wrong += st.wrong;
+                sum.hinted += st.hinted;
+                sum.revealed += st.revealed;
+                sum.scored += st.scored;
+                sum.ms += (st.avgMs || 0) * st.total;
+
+                const tr = document.createElement('tr');
+                tr.className = 'clickable';
+                tr.addEventListener('click', () => openDetail(item.user));
+
+                td(tr, item.user.name, 'name');
+                td(tr, st.total, 'num');
+                td(tr, fmtPct(st.accuracy), 'num');
+                td(tr, st.wrong, 'num');
+                td(tr, st.hinted, 'num');
+                td(tr, st.revealed, 'num');
+                td(tr, fmtMs(st.avgMs), 'num');
+                td(tr, fmtTime(st.lastAt), 'num');
+
+                // 每档显示「独立做对 / 做过」，鼠标悬停看正确率和平均用时
+                (st.byLevel || []).forEach(row => {
+                    const cell = td(tr, row.total ? row.correct + '/' + row.total : '—', 'num');
+                    if (row.total) {
+                        cell.title = LEVEL_LABEL[row.level] + '：正确率 ' + fmtPct(row.accuracy)
+                            + '，平均 ' + fmtMs(row.avgMs);
+                    } else {
+                        cell.title = LEVEL_LABEL[row.level] + '：还没做过';
+                    }
+                });
+
+                const opCell = td(tr, '', 'num');
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'mini';
+                btn.textContent = '明细';
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openDetail(item.user);
+                });
+                opCell.appendChild(btn);
+
+                body.appendChild(tr);
+            });
+
+            const empty = $('list-empty');
+            empty.hidden = students.length > 0;
+            if (!students.length) {
+                const invite = currentUser && currentUser.inviteCode ? currentUser.inviteCode : '';
+                empty.textContent = invite
+                    ? '还没有学生。把邀请码 ' + invite + ' 发给学生，或用下面表单直接添加。'
+                    : '还没有学生。用下面表单直接添加，或让学生注册时填写你的邀请码。';
+            }
+
+            renderSummary(sum);
+        }
+
+        function renderAttempts(list) {
+            const body = $('detail-body');
+            body.innerHTML = '';
+            list.forEach(a => {
+                const tr = document.createElement('tr');
+                td(tr, fmtTime(a.createdAt), 'num');
+                td(tr, LEVEL_LABEL[a.level] || String(a.level));
+                tdMath(tr, a.question);
+                tdMath(tr, a.studentAnswer);
+                tdMath(tr, a.answer);
+
+                const resultCell = td(tr, '');
+                const info = bucketOf(a);
+                const tag = document.createElement('span');
+                tag.className = 'tag ' + info.cls;
+                tag.textContent = info.text;
+                resultCell.appendChild(tag);
+
+                td(tr, fmtMs(a.ms), 'num');
+                body.appendChild(tr);
+            });
+            $('detail-empty').hidden = list.length > 0;
+        }
+
+        // ---------- 数据 ----------
+        let detailUser = null;
+
+        async function load() {
+            const data = await api('/api/teacher/students');
+            students = data.students || [];
+            students.sort((a, b) => {
+                const la = a.stats.lastAt || 0;
+                const lb = b.stats.lastAt || 0;
+                if (la !== lb) return lb - la;                       // 最近做过的排前面
+                return a.user.name.localeCompare(b.user.name, 'zh');
+            });
+            $('updated').textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN', { hour12: false });
+            renderStudents();
+        }
+
+        async function openDetail(user) {
+            detailUser = user;
+            $('list-view').hidden = true;
+            $('detail-view').hidden = false;
+            $('detail-title').textContent = user.name + ' 的做题记录';
+            $('detail-body').innerHTML = '';
+            $('detail-empty').hidden = true;
+            $('detail-msg').textContent = '加载中…';
+
+            try {
+                const data = await api('/api/teacher/attempts?studentId=' + encodeURIComponent(user.id) + '&limit=100');
+                const list = data.attempts || [];
+                $('detail-msg').textContent = list.length
+                    ? '最近 ' + list.length + ' 条，新的在上面（同一道题只记一次）'
+                    : '';
+                renderAttempts(list);
+            } catch (err) {
+                $('detail-msg').textContent = '加载失败：' + err.message;
+            }
+        }
+
+        function backToList() {
+            $('detail-view').hidden = true;
+            $('list-view').hidden = false;
+        }
+
+        // ---------- 事件 ----------
+        $('back').addEventListener('click', backToList);
+
+        $('refresh').addEventListener('click', async () => {
+            const btn = $('refresh');
+            btn.disabled = true;
+            try {
+                if (!$('detail-view').hidden && detailUser) {
+                    await openDetail(detailUser);
+                } else {
+                    await load();
+                }
+            } catch (err) {
+                $('updated').textContent = '刷新失败：' + err.message;
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        $('logout').addEventListener('click', async () => {
+            try {
+                await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+            } catch (err) { /* 忽略，照样回登录页 */ }
+            location.replace('index.html');
+        });
+
+        $('add-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = $('add-name').value.trim();
+            const password = $('add-pass').value;
+            const msg = $('add-msg');
+            msg.className = 'msg';
+            msg.textContent = '';
+
+            if (!name) {
+                msg.textContent = '请填写学生姓名';
+                return;
+            }
+            if (password.length < 6) {
+                msg.textContent = '密码至少 6 位';
+                return;
+            }
+
+            const btn = $('add-btn');
+            btn.disabled = true;
+            try {
+                const data = await api('/api/teacher/students', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, password })
+                });
+                msg.className = 'msg ok';
+                msg.textContent = '已添加 ' + (data.user ? data.user.name : name) + '，让他用这个名字和密码登录。';
+                $('add-name').value = '';
+                $('add-pass').value = '';
+                await load();
+            } catch (err) {
+                msg.textContent = err.message;
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        // ---------- 启动：先确认是老师，再拉数据 ----------
+        (async () => {
+            try {
+                const me = await api('/api/auth/me');
+                const user = me && me.user;
+                if (!user) {
+                    location.replace('index.html');
+                    return;
+                }
+                if (user.role !== 'teacher') {
+                    $('who').textContent = '当前账号：学生 ' + user.name;
+                    $('denied').hidden = false;
+                    $('list-view').hidden = true;
+                    return;
+                }
+
+                currentUser = user;
+                $('who').textContent = '老师：' + user.name
+                    + (user.inviteCode ? ' · 邀请码 ' + user.inviteCode : '');
+                await load();
+            } catch (err) {
+                if (err && /请先登录/.test(err.message)) return;
+                $('updated').textContent = '初始化失败：' + (err && err.message ? err.message : String(err));
+            }
+        })();
+    </script>
+</body>
+
+</html>

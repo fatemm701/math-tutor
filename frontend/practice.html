@@ -245,6 +245,7 @@
     <div class="topbar">
         <span class="who" id="who">加载中…</span>
         <span class="actions">
+            <a id="board-link" href="teacher.html" hidden>看板</a>
             <button type="button" id="logout">退出</button>
         </span>
     </div>
@@ -912,6 +913,8 @@
                     const invite = user.inviteCode ? ' · 邀请码 ' + user.inviteCode : '';
                     whoEl.textContent = roleLabel + '：' + user.name + invite;
                 }
+                const boardLink = document.getElementById('board-link');
+                if (boardLink) boardLink.hidden = user.role !== 'teacher';   // 只有老师能进看板
             }
 
             function makeClientId() {
