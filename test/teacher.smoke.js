@@ -35,6 +35,7 @@ class El {
 
 const IDS = [
     'who', 'summary', 'denied', 'list-view', 'students-body', 'list-empty', 'updated',
+    'self-view', 'self-stats', 'self-detail',
     'add-name', 'add-pass', 'add-btn', 'add-msg', 'add-form',
     'detail-view', 'detail-title', 'detail-body', 'detail-empty', 'detail-msg',
     'back', 'refresh', 'logout'
@@ -95,6 +96,15 @@ const attemptsPayload = [
     }
 ];
 
+// 老师自己用这个账号试做的记录（后端 /api/teacher/students 的 self 字段）
+const selfPayload = {
+    user: { id: 'u_t', name: '王老师', role: 'teacher' },
+    stats: {
+        total: 8, correct: 5, wrong: 2, hinted: 1, revealed: 0, scored: 7,
+        accuracy: 71.4, avgMs: 12000, lastAt: now, byLevel: zeroLevels
+    }
+};
+
 function makeFetch(role, apiCalls) {
     const json = (body, status) => ({
         ok: !status || status < 400,
@@ -114,7 +124,10 @@ function makeFetch(role, apiCalls) {
                 return json({ success: true, data: { user: { id: 'u_new', name: '张三', role: 'student' } } });
             }
             // 故意把小红排在前面，页面应按「最近做过」重排
-            return json({ success: true, data: { students: [studentB, studentA] } });
+            return json({ success: true, data: { students: [studentB, studentA], self: selfPayload } });
+        }
+        if (url.indexOf('/api/attempts/mine') === 0) {
+            return json({ success: true, data: { attempts: attemptsPayload } });
         }
         if (url.indexOf('/api/teacher/attempts') === 0) {
             return json({ success: true, data: { student: studentA.user, attempts: attemptsPayload } });
@@ -265,6 +278,25 @@ const text = (el) => (el ? String(el.textContent) : null);
     await settle();
     const kFirst = cells(cells(k.dom.byId['detail-body'])[0]);
     check(text(kFirst[2]) === '2(x - 3) - 4(x + 1)', 'KaTeX 失效时应退化成纯文本，实际: ' + text(kFirst[2]));
+
+    // ---------- 9. 我自己（老师本账号的记录）----------
+    check(t.dom.byId['self-view'].hidden === false, '老师自己有记录时应显示「我自己」面板');
+    const selfStats = text(t.dom.byId['self-stats']);
+    check(/练了 8 题/.test(selfStats), '自练题数不对: ' + selfStats);
+    check(/正确率 71.4%/.test(selfStats), '自练正确率不对: ' + selfStats);
+    check(/平均用时 12 秒/.test(selfStats), '自练平均用时不对: ' + selfStats);
+
+    (t.dom.byId['self-detail'].handlers.click || []).forEach(fn => fn({}));
+    await settle();
+    check(t.dom.byId['self-view'].hidden === true, '看自练明细时应隐藏「我自己」面板');
+    check(t.dom.byId['detail-view'].hidden === false, '点「看明细」应打开明细');
+    check(t.apiCalls.some(c => c.url.indexOf('/api/attempts/mine') === 0),
+        '自练明细应走 /api/attempts/mine');
+    check(!t.apiCalls.some(c => c.url.indexOf('/api/teacher/attempts') === 0 && c.url.indexOf('u_t') > 0),
+        '自练明细不该用老师查学生的接口');
+
+    (t.dom.byId['back'].handlers.click || []).forEach(fn => fn({}));
+    check(t.dom.byId['self-view'].hidden === false, '返回列表后「我自己」应重新出现');
 
     // ---------- 汇总 ----------
     console.log('=== 老师看板冒烟 ===');

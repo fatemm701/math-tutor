@@ -280,6 +280,20 @@
             align-items: center;
         }
 
+        /* 老师自己的记录 */
+        .self-line {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .self-stats {
+            font-size: 0.85rem;
+            color: #374151;
+        }
+
         .link-btn {
             font-family: inherit;
             font-size: 0.85rem;
@@ -327,6 +341,17 @@
             当前账号是学生，看板只有老师能打开。<br>
             <a href="practice.html">去练习 →</a>
         </div>
+
+        <section class="panel" id="self-view" hidden>
+            <div class="section-head">
+                <h2>我自己</h2>
+                <span class="hint">老师账号的练习记录，不计入学生统计</span>
+            </div>
+            <div class="self-line">
+                <span class="self-stats" id="self-stats"></span>
+                <button type="button" class="mini" id="self-detail">看明细</button>
+            </div>
+        </section>
 
         <section class="panel" id="list-view">
             <div class="section-head">
@@ -602,6 +627,23 @@
 
         // ---------- 数据 ----------
         let detailUser = null;
+        let detailSource = 'student';
+        let selfInfo = null;
+
+        // 老师自己（本账号）的练习记录：单独一块，不进学生统计
+        function renderSelf(self) {
+            selfInfo = self || null;
+            const box = $('self-view');
+            if (!selfInfo) {
+                box.hidden = true;
+                return;
+            }
+            const st = selfInfo.stats;
+            $('self-stats').textContent = '练了 ' + st.total + ' 题 · 独立做对 ' + st.correct
+                + ' · 错 ' + st.wrong + ' · 提示 ' + st.hinted + ' · 看解析 ' + st.revealed
+                + ' · 正确率 ' + fmtPct(st.accuracy) + ' · 平均用时 ' + fmtMs(st.avgMs);
+            box.hidden = false;
+        }
 
         async function load() {
             const data = await api('/api/teacher/students');
@@ -614,19 +656,27 @@
             });
             $('updated').textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN', { hour12: false });
             renderStudents();
+            renderSelf(data.self);
         }
 
-        async function openDetail(user) {
+        async function openDetail(user, source) {
             detailUser = user;
+            detailSource = source === 'self' ? 'self' : 'student';
             $('list-view').hidden = true;
+            $('self-view').hidden = true;
             $('detail-view').hidden = false;
             $('detail-title').textContent = user.name + ' 的做题记录';
             $('detail-body').innerHTML = '';
             $('detail-empty').hidden = true;
             $('detail-msg').textContent = '加载中…';
 
+            // 老师自己的记录走 /api/attempts/mine，学生的走老师专属接口
+            const url = detailSource === 'self'
+                ? '/api/attempts/mine?limit=100'
+                : '/api/teacher/attempts?studentId=' + encodeURIComponent(user.id) + '&limit=100';
+
             try {
-                const data = await api('/api/teacher/attempts?studentId=' + encodeURIComponent(user.id) + '&limit=100');
+                const data = await api(url);
                 const list = data.attempts || [];
                 $('detail-msg').textContent = list.length
                     ? '最近 ' + list.length + ' 条，新的在上面（同一道题只记一次）'
@@ -640,17 +690,22 @@
         function backToList() {
             $('detail-view').hidden = true;
             $('list-view').hidden = false;
+            if (selfInfo) $('self-view').hidden = false;
         }
 
         // ---------- 事件 ----------
         $('back').addEventListener('click', backToList);
+
+        $('self-detail').addEventListener('click', () => {
+            if (selfInfo) openDetail(selfInfo.user, 'self');
+        });
 
         $('refresh').addEventListener('click', async () => {
             const btn = $('refresh');
             btn.disabled = true;
             try {
                 if (!$('detail-view').hidden && detailUser) {
-                    await openDetail(detailUser);
+                    await openDetail(detailUser, detailSource);
                 } else {
                     await load();
                 }

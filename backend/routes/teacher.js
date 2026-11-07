@@ -62,7 +62,14 @@ router.get('/students', auth.requireTeacher, (req, res) => {
             user: auth.publicUser(u),
             stats: summarize(db.attempts.filter(a => a.userId === u.id))
         }));
-    res.json({ success: true, data: { students } });
+
+    // 老师自己用这个账号试做的记录：单独给一块，不混进学生统计
+    const selfAttempts = db.attempts.filter(a => a.userId === req.user.id);
+    const self = selfAttempts.length
+        ? { user: auth.publicUser(req.user), stats: summarize(selfAttempts) }
+        : null;
+
+    res.json({ success: true, data: { students, self } });
 });
 
 router.get('/attempts', auth.requireTeacher, (req, res) => {

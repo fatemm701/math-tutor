@@ -154,6 +154,15 @@ function listen(port) {
     ok(r.body.data.students.length === 2 && r.body.data.students.some(s => s.user.id === newStudentId),
         '老师名下应有 2 个学生');
 
+    // 13b. 老师自己试做的记录单独给一块，不算成学生
+    r = await teacher('POST', '/api/attempts', { clientId: 'ct1', level: 2, question: q, answer: a, studentAnswer: a, result: 'correct', usedHint: false, revealed: false, ms: 5000 });
+    ok(r.status === 200, '老师自己上报失败: ' + JSON.stringify(r.body));
+    r = await teacher('GET', '/api/teacher/students');
+    ok(r.body.data.students.length === 2, '老师自己的记录不该混进学生列表，实际 ' + r.body.data.students.length);
+    ok(r.body.data.self && r.body.data.self.stats.total === 1, '应返回 self 且只有 1 条');
+    ok(r.body.data.self && r.body.data.self.user.role === 'teacher', 'self 应是老师本账号');
+    ok(r.body.data.self && r.body.data.self.stats.correct === 1, '老师自练的那题应算独立做对');
+
     // 14. 登录失败限速
     for (let i = 0; i < 5; i++) {
         await anon('POST', '/api/auth/login', { name: '小红', password: 'wrong' + i });
@@ -167,7 +176,7 @@ function listen(port) {
     ok(!raw.includes('hong123'), 'db.json 里不应出现明文密码');
     const db = JSON.parse(raw);
     ok(db.users.length === 3, 'db.json 应有 3 个用户，实际 ' + db.users.length);
-    ok(db.attempts.length === 3, 'db.json 应有 3 条记录，实际 ' + db.attempts.length);
+    ok(db.attempts.length === 4, 'db.json 应有 4 条记录（学生 3 + 老师自练 1），实际 ' + db.attempts.length);
     ok(db.users.every(u => u.salt && u.hash && u.hash.length === 128), '密码盐和哈希应写入');
 
     // 16. 冷启动：关服务 → 清模块缓存 → 同端口重启 → 数据还在
