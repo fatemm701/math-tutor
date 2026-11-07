@@ -5,9 +5,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>整式化简练习</title>
-    <!-- 引入 KaTeX 样式和脚本 -->
+    <!-- 引入 KaTeX -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <!-- 引入 Math.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.min.js"></script>
 
     <style>
         :root {
@@ -35,7 +37,6 @@
             gap: 20px;
         }
 
-        /* 题目与输入展示区 */
         .display-board {
             background: white;
             border-radius: 12px;
@@ -58,9 +59,6 @@
             margin: 0 !important;
         }
 
-        /* 覆盖 KaTeX 默认边距 */
-
-        /* 软键盘区 */
         .keyboard {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -100,148 +98,244 @@
         .key.submit:active {
             background: #4338CA;
         }
+
+        .feedback {
+            margin-top: 10px;
+            font-size: 0.9rem;
+            min-height: 20px;
+            font-weight: bold;
+        }
     </style>
 </head>
 
 <body>
 
     <div class="container">
-        <!-- 展示区 -->
         <div class="display-board">
-            <div class="question-label">当前题目 (进阶)</div>
+            <div class="question-label" id="level-label">当前题目</div>
             <div id="question-display"></div>
             <div class="question-label" style="margin-top: 15px;">你的答案</div>
             <div id="input-display" style="color: var(--primary); min-height: 35px;"></div>
+            <div id="feedback-display" class="feedback"></div>
         </div>
 
-        <!-- 软键盘区 -->
         <div class="keyboard" id="keyboard">
-            <!-- 第一排：数字与加号 -->
+            <!-- 第一排 -->
             <div class="key" data-val="7">7</div>
             <div class="key" data-val="8">8</div>
             <div class="key" data-val="9">9</div>
             <div class="key" data-val="+">+</div>
-        
-            <!-- 第二排：数字与减号 -->
+
+            <!-- 第二排 -->
             <div class="key" data-val="4">4</div>
             <div class="key" data-val="5">5</div>
             <div class="key" data-val="6">6</div>
             <div class="key" data-val="-">-</div>
-        
-            <!-- 第三排：数字与乘号 -->
+
+            <!-- 第三排 -->
             <div class="key" data-val="1">1</div>
             <div class="key" data-val="2">2</div>
             <div class="key" data-val="3">3</div>
             <div class="key" data-val="*">×</div>
-        
-            <!-- 第四排：零、变量与括号 -->
+
+            <!-- 第四排 -->
             <div class="key" data-val="0">0</div>
             <div class="key" data-val="x">x</div>
             <div class="key" data-val="(">(</div>
             <div class="key" data-val=")">)</div>
-        
-            <!-- 第五排：双字母与指数 -->
+
+            <!-- 第五排 -->
             <div class="key" data-val="a">a</div>
             <div class="key" data-val="b">b</div>
             <div class="key" data-val="^2">²</div>
             <div class="key" data-val="^3">³</div>
-        
-            <!-- 第六排：操作键（各占两列） -->
+
+            <!-- 第六排 -->
             <div class="key action" data-action="backspace" style="grid-column: span 2;">退格</div>
             <div class="key submit" data-action="submit" style="grid-column: span 2;">提交答案</div>
         </div>
     </div>
 
     <script>
-        // 在浏览器加载完 KaTeX 后执行
+        // ==========================================
+        // 1. 本地数学引擎 (出题 + 判卷)
+        // ==========================================
+        function rand(min, max, excludeZero = true) {
+            let val;
+            do { val = Math.floor(Math.random() * (max - min + 1)) + min; }
+            while (excludeZero && val === 0);
+            return val;
+        }
+
+        function formatTerm(coef, variable) {
+            if (coef === 0) return '0';
+            if (variable === '') return `${coef}`;
+            if (coef === 1) return variable;
+            if (coef === -1) return `-${variable}`;
+            return `${coef}${variable}`;
+        }
+
+        function genPoly(pool, num, minCoef, maxCoef) {
+            const selectedTypes = [...pool].sort(() => 0.5 - Math.random()).slice(0, num);
+            const terms = selectedTypes.map(type => formatTerm(rand(minCoef, maxCoef), type === 'const' ? '' : type));
+            return terms.reduce((acc, term, idx) => {
+                if (idx === 0) return term;
+                return term.startsWith('-') ? `${acc} - ${term.slice(1)}` : `${acc} + ${term}`;
+            }, "");
+        }
+
+        function buildTemplate(level) {
+            if (level === 1) {
+                const A = rand(-10, 10);
+                const P1 = genPoly(['const', 'x'], 2, -5, 5);
+                const type = rand(1, 4);
+                if (type === 1) return `${A} - (${P1})`;
+                if (type === 2) return `${A} + (${P1})`;
+                if (type === 3) return `-(${P1}) + ${A}`;
+                return `-(${P1})`;
+            }
+            else if (level === 2) {
+                const k1 = rand(-5, 5);
+                const k2 = rand(-5, 5);
+                const P1 = genPoly(['const', 'x'], 2, -10, 10);
+                const P2 = genPoly(['const', 'x'], 2, -10, 10);
+                const mono = formatTerm(rand(-5, 5), 'x');
+                const type = rand(1, 4);
+                if (type === 1) return `${k1}(${P1}) - ${k2}(${P2})`;
+                if (type === 2) return `${k1}(${P1}) - ${mono}`;
+                if (type === 3) return `(${P1}) + ${k2}(${P2})`;
+                return `(${P1}) - ${k2}(${P2})`;
+            }
+            else if (level === 3) {
+                const k = rand(-4, 4);
+                const mono = formatTerm(rand(-4, 4), 'x');
+                const P1 = genPoly(['const', 'x', 'x^2'], rand(2, 3), -6, 6);
+                const P2 = genPoly(['const', 'x', 'x^2'], 2, -6, 6);
+                const P3 = genPoly(['const', 'x'], 2, -4, 4);
+                const type = rand(1, 4);
+                if (type === 1) return `${mono} - ${k}(${P1} - (${P3}))`;
+                if (type === 2) return `${k}(${P1}) - ${mono}`;
+                if (type === 3) return `x(${P3}) - ${k}(${P2})`;
+                return `${mono} - (${k}(${P3}) - ${rand(1, 9)})`;
+            }
+            else {
+                const k1 = rand(-4, 4);
+                const k2 = rand(-4, 4);
+                const mono = formatTerm(rand(-4, 4), rand(1, 2) === 1 ? 'a' : 'b');
+                const pool = ['const', 'a', 'b', 'ab', 'a^2', 'b^2'];
+                const P1 = genPoly(pool, rand(2, 3), -5, 5);
+                const P2 = genPoly(pool, 2, -5, 5);
+                const type = rand(1, 4);
+                if (type === 1) return `${mono} - ${k1}(${P1}) + ${formatTerm(k2, 'b')}`;
+                if (type === 2) return `${k1}(${P1}) - ${k2}(${P2})`;
+                if (type === 3) return `a(${genPoly(['a', 'b'], 2, -3, 3)}) - ${k2}(${P2})`;
+                return `-(${P1}) + ${k2}(${P2})`;
+            }
+        }
+
+        function generateQuestion(level = 1) {
+            for (let i = 0; i < 500; i++) {
+                const expr = buildTemplate(level);
+                if (!expr.includes('(')) continue;
+                let ansStr;
+                try {
+                    ansStr = math.rationalize(expr).toString().replace(/\s/g, '');
+                } catch (e) { continue; }
+
+                if (ansStr === '0' || expr.replace(/\s/g, '') === ansStr) continue;
+                const termCount = ansStr.split(/(?=[+-])/).filter(t => t !== '').length;
+                if (termCount < 2 || termCount > 6 || ansStr.includes('^4') || ansStr.includes('^5')) continue;
+
+                return { level, question: expr, answer: ansStr };
+            }
+            return { level, question: '3 - (x + 3)', answer: '-x' };
+        }
+
+        function evaluateAnswer(studentAns, standardAns) {
+            if (/[+\-*/]{2,}/.test(studentAns.replace(/\s/g, ''))) {
+                return { status: 'error', msg: '含有连续符号，请写成最简形式' };
+            }
+            try {
+                const diff = math.rationalize(`(${studentAns}) - (${standardAns})`).toString();
+                const isEquivalent = diff === '0';
+                const hasParentheses = /[()]/.test(studentAns);
+
+                const getTermCount = (e) => e.replace(/[\s*]/g, '').split(/(?=[+-])/).filter(t => t !== '').length;
+                const stuTermCount = getTermCount(studentAns);
+                const simpTermCount = getTermCount(math.rationalize(studentAns).toString());
+                const isMerged = stuTermCount <= simpTermCount;
+
+                if (isEquivalent && !hasParentheses && isMerged) return { status: 'correct', msg: '完全正确！' };
+                if (isEquivalent && hasParentheses) return { status: 'partial', msg: '结果正确，但尚未去括号' };
+                if (isEquivalent && !hasParentheses && !isMerged) return { status: 'partial', msg: '去括号正确，但未合并同类项' };
+                return { status: 'wrong', msg: '答案错误，请再检查一下计算' };
+            } catch (e) {
+                return { status: 'error', msg: '表达式无法解析，请检查输入格式' };
+            }
+        }
+
+        // ==========================================
+        // 2. 前端交互逻辑
+        // ==========================================
         window.onload = () => {
-            const questionStr = "2x(x - 3) - (x^2 - 4x)"; // 模拟我们上一节的出题函数生成的题目
-            let currentQuestion = ""; // 保存当前拿到的题面
+            let currentInput = "";
+            let currentQ = null;
 
-            // 页面加载时自动请求一道题目
-            async function fetchQuestion(level = 2) {
-                const res = await fetch(`/api/question?level=${level}`);
-                const json = await res.json();
-                if (json.success) {
-                    currentQuestion = json.data.question;
-                    currentInput = ""; // 清空输入框
+            const qEl = document.getElementById("question-display");
+            const inEl = document.getElementById("input-display");
+            const fbEl = document.getElementById("feedback-display");
+            const levelLabel = document.getElementById("level-label");
 
-                    // 渲染题面和空输入框
-                    katex.render(currentQuestion, questionEl, { displayMode: true });
-                    renderInput();
-                }
+            function loadNewQuestion(level = 2) { // 测试时可修改难度 1-4
+                currentQ = generateQuestion(level);
+                currentInput = "";
+                fbEl.textContent = "";
+                levelLabel.textContent = `当前题目 (难度 ${level})`;
+                katex.render(currentQ.question, qEl, { displayMode: true, throwOnError: false });
+                renderInput();
             }
 
-            const questionEl = document.getElementById("question-display");
-            const inputEl = document.getElementById("input-display");
-
-            // 1. 渲染题目
-            katex.render(questionStr, questionEl, { displayMode: true, throwOnError: false });
-
-            // 2. 实时渲染输入的公式
             function renderInput() {
-                let displayStr = currentInput;
-
-                if (displayStr === "") {
-                    displayStr = "\\textcolor{#9CA3AF}{\\text{请点击下方键盘输入}}";
-                } else {
-                    // 核心视觉优化：把后台认识的 '*'，渲染成优美的点乘号 '·'
-                    // 如果你更喜欢叉乘号，可以换成 '\\times '
-                    displayStr = displayStr.replace(/\*/g, '\\cdot ');
-                }
-
-                katex.render(displayStr, inputEl, {
-                    displayMode: true,
-                    throwOnError: false
-                });
+                let displayStr = currentInput === "" ? "\\textcolor{#9CA3AF}{\\text{请点击下方键盘输入}}" : currentInput.replace(/\*/g, '\\cdot ');
+                katex.render(displayStr, inEl, { displayMode: true, throwOnError: false });
             }
 
-            // 3. 软键盘事件代理
-            document.getElementById("keyboard").addEventListener("click", async (e) => {
+            document.getElementById("keyboard").addEventListener("click", (e) => {
                 const btn = e.target.closest('.key');
                 if (!btn) return;
 
                 const val = btn.dataset.val;
                 const action = btn.dataset.action;
+                fbEl.textContent = ""; // 隐藏之前的反馈
 
                 if (val) {
                     currentInput += val;
                 } else if (action === "backspace") {
-                    // 如果末尾是指数标识，一次性删掉两个字符 (^ 和 数字)
                     if (currentInput.match(/\^[23]$/)) {
                         currentInput = currentInput.slice(0, -2);
                     } else {
                         currentInput = currentInput.slice(0, -1);
                     }
                 } else if (action === "submit") {
-                    if (currentInput === "") return alert("请先输入答案");
+                    if (currentInput === "") return;
 
-                    const res = await fetch('/api/evaluate', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            question: currentQuestion,
-                            studentAnswer: currentInput
-                        })
-                    });
+                    const result = evaluateAnswer(currentInput, currentQ.answer);
 
-                    const json = await res.json();
-                    if (json.success) {
-                        const result = json.data;
-                        if (result.status === 'correct') {
-                            alert('🎉 ' + result.msg);
-                            fetchQuestion(); // 做对了自动进入下一题
-                        } else {
-                            alert('❌ ' + result.msg);
-                        }
+                    fbEl.textContent = result.msg;
+                    fbEl.style.color = result.status === 'correct' ? '#10B981' : (result.status === 'error' || result.status === 'wrong' ? '#EF4444' : '#F59E0B');
+
+                    if (result.status === 'correct') {
+                        // TODO: 在这里向轻量级后端发送 { question: currentQ.question, isCorrect: true, ... }
+                        setTimeout(() => loadNewQuestion(currentQ.level), 1500);
+                    } else {
+                        // TODO: 记录错题数据
                     }
                 }
-
                 renderInput();
             });
 
-            // 初始化空状态渲染
-            renderInput();
+            // 启动！
+            loadNewQuestion(3); // 默认加载难度 3
         };
     </script>
 </body>
