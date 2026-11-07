@@ -156,3 +156,23 @@ docker compose down                    # 停止并移除容器（data 保留）
 docker image prune -f                  # 清理悬空镜像
 ```
 
+## 八、当前实例记录（62.234.12.76）
+
+| 项 | 值 |
+|---|---|
+| 系统 | Ubuntu（内核 6.8），Docker 27.5.1 / Compose v2.32.4 |
+| 账号 | `ubuntu`（uid **1000**），sudo 免密 |
+| 部署目录 | `/opt/poly-drill`，数据 `/opt/poly-drill/data/db.json` |
+| 端口 | 宿主 **3001** → 容器 3000（宿主 3000 已被 `open-webui` 占用） |
+| 老师注册口令 | `/opt/poly-drill/.env` 里的 `TEACHER_INVITE` |
+| 已有服务 | `nginx-proxy-manager`（80/443）、open-webui、sillytavern 等 |
+
+公网放行情况：这台机器目前只对公网开了 **80/443**（22 供 SSH）。
+
+- 想直接 `http://62.234.12.76:3001` 访问：云控制台安全组加一条 `TCP:3001` 入站规则；
+- 想走域名 + HTTPS（推荐，现有 NPM 直接可用）：Proxy Host 转发到 `172.17.0.1:3001`
+  （docker0 网关，已确认），然后在 `.env` 里设 `COOKIE_SECURE=1`、`TRUST_PROXY=1`，
+  执行 `docker compose up -d`。
+
+改完 `.env` 一定要 `docker compose up -d`（不用 `--build`），否则容器还是旧环境变量。
+
