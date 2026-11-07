@@ -271,6 +271,71 @@ const shownQuestion = String(qEl._html || qEl.textContent || '');
 check(shownQuestion.length > 0, 'KaTeX 失败时题目应退化为纯文本，实际为空');
 check(/[0-9xab(]/.test(shownQuestion), '退化内容应包含题目字符，实际: ' + shownQuestion);
 
+// 13. 进入页面的默认难度 + 缓存时效
+const normalKatexRender = katex.render;
+const KEY = 'poly_current_q:u_test';
+
+async function bootFreshPage(cached) {
+    katex.render = (value, el) => { el._tex = value; el.textContent = value; };   // 恢复正常的桩
+    registry.length = 0;
+    Object.keys(byId).forEach(k => delete byId[k]);
+    store.clear();
+    if (cached) store.set(KEY, JSON.stringify(cached));
+
+    const tabs = [1, 2, 3, 4].map(lv => {
+        const el = mk('', 'button', 'level-tab');
+        el.dataset.level = String(lv);
+        return el;
+    });
+    mk('level-tabs');
+    const question = mk('question-display');
+    mk('input-display');
+    mk('feedback-display');
+    mk('hint-display');
+    mk('steps-display');
+    mk('who');
+    mk('board-link');
+    mk('logout');
+    const keyboardEl = mk('keyboard');
+    const submitEl = mk('', 'div', 'key submit');
+    submitEl.dataset.action = 'submit';
+    keyboardEl.appendChild(submitEl);
+
+    new Function('window', 'document', 'katex', 'localStorage', 'confirm', 'setTimeout', 'clearTimeout', 'math', 'fetch',
+        inline + '\n')(fakeWindow, document, katex, localStorage, () => true,
+        () => 0, () => { }, math, fetchStub);
+
+    await fakeWindow.onload();
+    await new Promise(r => setImmediate(r));
+    return { tabs, question };
+}
+
+const activeLevelOf = (tabs) => {
+    const active = tabs.filter(t => t.classList.contains('active'));
+    return active.length === 1 ? active[0].dataset.level : 'active=' + active.length;
+};
+
+const freshPage = await bootFreshPage(null);
+check(activeLevelOf(freshPage.tabs) === '1',
+    '新学生（无缓存）应默认「① 入门」，实际 ' + activeLevelOf(freshPage.tabs));
+check(String(freshPage.question._tex || '').length > 0, '默认难度的题应渲染出来');
+
+const oldPage = await bootFreshPage({
+    level: 2, question: '2(x - 3) - 4(x + 1)', answer: '-2x-10',
+    startedAt: Date.now() - 2 * 60 * 60 * 1000, clientId: 'c_old'
+});
+check(activeLevelOf(oldPage.tabs) === '1',
+    '两小时前的旧题应丢弃、重新从入门开始，实际 ' + activeLevelOf(oldPage.tabs));
+
+const warmPage = await bootFreshPage({
+    level: 3, question: 'x - (3x - 2)', answer: '-2x+2',
+    startedAt: Date.now() - 60 * 1000, clientId: 'c_warm'
+});
+check(activeLevelOf(warmPage.tabs) === '3',
+    '刚做过的题刷新后应接着做，实际 ' + activeLevelOf(warmPage.tabs));
+
+katex.render = normalKatexRender;
+
 // ---------- 汇总 ----------
 console.log('=== 交互冒烟 ===');
 if (fails.length === 0) console.log('  全部通过');

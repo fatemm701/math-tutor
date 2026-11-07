@@ -875,6 +875,10 @@
         // ==========================================
         window.onload = async () => {
             const LEVELS = [1, 2, 3, 4];
+            // 新学生第一次进来从「① 入门」开始，由易到难；已经做过的题由缓存恢复，不打断
+            const DEFAULT_LEVEL = 1;
+            // 缓存只管「刷新/误触不丢当前题」；放太久（隔了课）就丢掉，重新从入门开始
+            const CACHE_TTL_MS = 30 * 60 * 1000;
             let STORAGE_KEY = "poly_current_q";
 
             let currentUser = null;
@@ -965,7 +969,7 @@
             }
 
             // 加载题目：默认优先读取本地存货，刷新页面不丢当前题
-            function loadQuestion(level = 2, forceNew = false) {
+            function loadQuestion(level = DEFAULT_LEVEL, forceNew = false) {
                 isLocked = false;
                 currentInput = "";
                 wrongCount = 0;
@@ -979,6 +983,8 @@
                 if (!forceNew) {
                     try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { saved = null; }
                     if (!isValidQuestion(saved)) saved = null;
+                    // 上次那题放太久了就别再端出来，重新从默认难度出题
+                    if (saved && Date.now() - (saved.startedAt || 0) > CACHE_TTL_MS) saved = null;
                 }
 
                 if (saved) {
@@ -1214,7 +1220,7 @@
                     });
                 }
 
-                loadQuestion(2);
+                loadQuestion(DEFAULT_LEVEL);
 
                 if (typeof math === 'undefined') {
                     fbEl.textContent = '题目库未加载，请刷新页面（Ctrl+F5）';
