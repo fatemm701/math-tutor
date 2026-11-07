@@ -34,7 +34,33 @@
             max-width: 500px;
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 15px;
+        }
+
+        /* 难度选择卡片 */
+        .level-tabs {
+            display: flex;
+            gap: 8px;
+        }
+
+        .level-tab {
+            flex: 1;
+            padding: 10px 0;
+            font-family: inherit;
+            font-size: 0.9rem;
+            font-weight: bold;
+            color: #4B5563;
+            background: white;
+            border: 1px solid #D1D5DB;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .level-tab.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
         }
 
         .display-board {
@@ -111,6 +137,14 @@
 <body>
 
     <div class="container">
+        <!-- 难度选择 -->
+        <div class="level-tabs" id="level-tabs">
+            <button class="level-tab" data-level="1">① 入门</button>
+            <button class="level-tab" data-level="2">② 基础</button>
+            <button class="level-tab" data-level="3">③ 进阶</button>
+            <button class="level-tab" data-level="4">④ 挑战</button>
+        </div>
+
         <div class="display-board">
             <div class="question-label" id="level-label">当前题目</div>
             <div id="question-display"></div>
@@ -150,8 +184,9 @@
             <div class="key" data-val="^2">²</div>
             <div class="key" data-val="^3">³</div>
 
-            <!-- 第六排 -->
-            <div class="key action" data-action="backspace" style="grid-column: span 2;">退格</div>
+            <!-- 第六排：退格、看答案、提交 -->
+            <div class="key action" data-action="backspace">退格</div>
+            <div class="key action" data-action="giveup" style="color: #EF4444;">看答案</div>
             <div class="key submit" data-action="submit" style="grid-column: span 2;">提交答案</div>
         </div>
     </div>
@@ -173,6 +208,129 @@
             if (coef === 1) return variable;
             if (coef === -1) return `-${variable}`;
             return `${coef}${variable}`;
+        }
+
+        // mathjs 会把隐式乘号当成单位或函数调用（a=are、b=bit、x(3) 当函数调用），
+        // 解析前先补全显式乘号：3ab -> 3*a*b，x( -> x*(，)( -> )*(
+        function normalizeExpr(expr) {
+            let s = String(expr).replace(/\s+/g, '');
+            s = s.replace(/([a-zA-Z)])(?=[a-zA-Z(])/g, '$1*'); // ab -> a*b, x( -> x*(, )( -> )*(
+            s = s.replace(/(\d)(?=[a-zA-Z(])/g, '$1*');        // 3a -> 3*a, 3( -> 3*(
+            s = s.replace(/([a-zA-Z)])(?=\d)/g, '$1*');        // x2 -> x*2
+            return s;
+        }
+
+        // 把表达式展开成「单项式 -> 系数」，用于精确判等和输出最简答案
+        // （mathjs 的 rationalize/simplify 处理 a、b 这种多字母多项式时会漏合并）
+        const VAR_ORDER = ['x', 'a', 'b'];
+
+        function expandExpr(node) {
+            if (node.isParenthesisNode) return expandExpr(node.content);
+            if (node.isConstantNode) {
+                const v = Number(node.value);
+                if (!Number.isInteger(v)) throw new Error('系数必须是整数');
+                return v === 0 ? new Map() : new Map([['0,0,0', v]]);
+            }
+            if (node.isSymbolNode) {
+                const idx = VAR_ORDER.indexOf(node.name);
+                if (idx < 0) throw new Error('不支持的字母');
+                const exp = [0, 0, 0];
+                exp[idx] = 1;
+                return new Map([[exp.join(','), 1]]);
+            }
+            if (node.isOperatorNode) {
+                if (node.op === 'unaryMinus' || (node.op === '-' && node.args.length === 1)) {
+                    return polyScale(expandExpr(node.args[0]), -1);
+                }
+                if (node.op === '+' || node.op === '-') {
+                    return polyAdd(expandExpr(node.args[0]), expandExpr(node.args[1]), node.op === '-' ? -1 : 1);
+                }
+                if (node.op === '*') {
+                    return polyMul(expandExpr(node.args[0]), expandExpr(node.args[1]));
+                }
+                if (node.op === '^') {
+                    const exp = node.args[1].isConstantNode ? Number(node.args[1].value) : NaN;
+                    if (!Number.isInteger(exp) || exp < 0 || exp > 6) throw new Error('指数不合法');
+                    const base = expandExpr(node.args[0]);
+                    let result = new Map([['0,0,0', 1]]);
+                    for (let i = 0; i < exp; i++) result = polyMul(result, base);
+                    return result;
+                }
+            }
+            throw new Error('表达式不支持');
+        }
+
+        function polyScale(poly, k) {
+            const out = new Map();
+            poly.forEach((c, key) => {
+                if (c * k !== 0) out.set(key, c * k);
+            });
+            return out;
+        }
+
+        function polyAdd(a, b, sign) {
+            const out = new Map(a);
+            b.forEach((c, key) => {
+                const v = (out.get(key) || 0) + sign * c;
+                v === 0 ? out.delete(key) : out.set(key, v);
+            });
+            return out;
+        }
+
+        function polyMul(a, b) {
+            const out = new Map();
+            a.forEach((ca, ka) => {
+                const ea = ka.split(',').map(Number);
+                b.forEach((cb, kb) => {
+                    const eb = kb.split(',').map(Number);
+                    const key = ea.map((v, i) => v + eb[i]).join(',');
+                    const v = (out.get(key) || 0) + ca * cb;
+                    v === 0 ? out.delete(key) : out.set(key, v);
+                });
+            });
+            return out;
+        }
+
+        function samePoly(a, b) {
+            if (a.size !== b.size) return false;
+            for (const [key, coef] of a) {
+                if (b.get(key) !== coef) return false;
+            }
+            return true;
+        }
+
+        // 输出隐含乘号的写法：8ab - 2a + 3
+        function formatPoly(poly) {
+            const terms = [...poly.entries()].map(([key, coef]) => {
+                const exp = key.split(',').map(Number);
+                let varStr = '';
+                exp.forEach((e, i) => {
+                    if (e === 1) varStr += VAR_ORDER[i];
+                    else if (e > 1) varStr += `${VAR_ORDER[i]}^${e}`;
+                });
+                return { coef, varStr, exp, degree: exp.reduce((s, v) => s + v, 0) };
+            }).sort((p, q) => (q.degree - p.degree)
+                || (q.exp[2] - p.exp[2]) || (q.exp[1] - p.exp[1]) || (q.exp[0] - p.exp[0]));
+
+            if (terms.length === 0) return '0';
+            return terms.map((t, i) => {
+                const abs = Math.abs(t.coef);
+                const body = t.varStr === '' ? `${abs}` : (abs === 1 ? t.varStr : `${abs}${t.varStr}`);
+                if (i === 0) return t.coef < 0 ? `-${body}` : body;
+                return `${t.coef < 0 ? ' - ' : ' + '}${body}`;
+            }).join('');
+        }
+
+        function parseToPoly(expr) {
+            return expandExpr(math.parse(normalizeExpr(expr)));
+        }
+
+        function maxExponent(poly) {
+            let max = 0;
+            poly.forEach((c, key) => {
+                key.split(',').forEach(e => { max = Math.max(max, Number(e)); });
+            });
+            return max;
         }
 
         function genPoly(pool, num, minCoef, maxCoef) {
@@ -237,14 +395,16 @@
             for (let i = 0; i < 500; i++) {
                 const expr = buildTemplate(level);
                 if (!expr.includes('(')) continue;
-                let ansStr;
+                let poly;
                 try {
-                    ansStr = math.rationalize(expr).toString().replace(/\s/g, '');
+                    // 按显式乘号解析，避免 5a 被当成单位、3ab 被当成符号 "ab"
+                    poly = parseToPoly(expr);
                 } catch (e) { continue; }
 
-                if (ansStr === '0' || expr.replace(/\s/g, '') === ansStr) continue;
-                const termCount = ansStr.split(/(?=[+-])/).filter(t => t !== '').length;
-                if (termCount < 2 || termCount > 6 || ansStr.includes('^4') || ansStr.includes('^5')) continue;
+                const ansStr = formatPoly(poly).replace(/\s/g, '');
+                if (ansStr === '0' || normalizeExpr(expr) === ansStr) continue;
+                if (poly.size < 2 || poly.size > 6) continue;
+                if (maxExponent(poly) > 3) continue;
 
                 return { level, question: expr, answer: ansStr };
             }
@@ -256,14 +416,15 @@
                 return { status: 'error', msg: '含有连续符号，请写成最简形式' };
             }
             try {
-                const diff = math.rationalize(`(${studentAns}) - (${standardAns})`).toString();
-                const isEquivalent = diff === '0';
+                const stuPoly = parseToPoly(studentAns);
+                const stdPoly = parseToPoly(standardAns);
+                const isEquivalent = samePoly(stuPoly, stdPoly);
                 const hasParentheses = /[()]/.test(studentAns);
 
+                // 学生写的项数多于最简项数 -> 没有合并同类项
                 const getTermCount = (e) => e.replace(/[\s*]/g, '').split(/(?=[+-])/).filter(t => t !== '').length;
                 const stuTermCount = getTermCount(studentAns);
-                const simpTermCount = getTermCount(math.rationalize(studentAns).toString());
-                const isMerged = stuTermCount <= simpTermCount;
+                const isMerged = stuTermCount <= stdPoly.size;
 
                 if (isEquivalent && !hasParentheses && isMerged) return { status: 'correct', msg: '完全正确！' };
                 if (isEquivalent && hasParentheses) return { status: 'partial', msg: '结果正确，但尚未去括号' };
@@ -275,22 +436,53 @@
         }
 
         // ==========================================
-        // 2. 前端交互逻辑
+        // 2. 前端交互与防作弊逻辑
         // ==========================================
         window.onload = () => {
+            const STORAGE_KEY = "poly_current_q";
+            const LEVELS = [1, 2, 3, 4];
+
             let currentInput = "";
             let currentQ = null;
+            let isLocked = false;   // 答对或看答案后锁定，禁止继续输入
+            let nextTimer = null;   // 自动进入下一题的定时器（切难度时清掉，避免竞态跳题）
 
             const qEl = document.getElementById("question-display");
             const inEl = document.getElementById("input-display");
             const fbEl = document.getElementById("feedback-display");
-            const levelLabel = document.getElementById("level-label");
+            const levelTabs = document.getElementById("level-tabs");
 
-            function loadNewQuestion(level = 2) { // 测试时可修改难度 1-4
-                currentQ = generateQuestion(level);
+            function isValidQuestion(q) {
+                return !!q && typeof q.question === 'string' && typeof q.answer === 'string'
+                    && LEVELS.includes(q.level);
+            }
+
+            // 加载题目：默认优先读取本地存货，刷新页面不丢当前题
+            function loadQuestion(level = 2, forceNew = false) {
+                if (nextTimer) { clearTimeout(nextTimer); nextTimer = null; }
+
+                isLocked = false;
                 currentInput = "";
                 fbEl.textContent = "";
-                levelLabel.textContent = `当前题目 (难度 ${level})`;
+
+                let saved = null;
+                if (!forceNew) {
+                    try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { saved = null; }
+                    if (!isValidQuestion(saved)) saved = null;
+                }
+
+                if (saved) {
+                    currentQ = saved;
+                } else {
+                    currentQ = generateQuestion(level);
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(currentQ));
+                }
+
+                // 高亮当前难度
+                document.querySelectorAll('.level-tab').forEach(tab => {
+                    tab.classList.toggle('active', parseInt(tab.dataset.level) === currentQ.level);
+                });
+
                 katex.render(currentQ.question, qEl, { displayMode: true, throwOnError: false });
                 renderInput();
             }
@@ -300,13 +492,28 @@
                 katex.render(displayStr, inEl, { displayMode: true, throwOnError: false });
             }
 
+            // 难度切换（放弃当前题会记一次错题）
+            levelTabs.addEventListener("click", (e) => {
+                const tab = e.target.closest('.level-tab');
+                if (!tab) return;
+
+                const newLevel = parseInt(tab.dataset.level);
+                if (newLevel === currentQ.level) return;
+                if (!confirm("切换难度将放弃当前题目（计入错题），确认切换吗？")) return;
+
+                // TODO: 在这里向后端发送错题记录 API
+                localStorage.removeItem(STORAGE_KEY);
+                loadQuestion(newLevel, true);
+            });
+
+            // 虚拟键盘
             document.getElementById("keyboard").addEventListener("click", (e) => {
                 const btn = e.target.closest('.key');
-                if (!btn) return;
+                if (!btn || isLocked) return;
 
                 const val = btn.dataset.val;
                 const action = btn.dataset.action;
-                fbEl.textContent = ""; // 隐藏之前的反馈
+                fbEl.textContent = ""; // 隐藏上一次的反馈
 
                 if (val) {
                     currentInput += val;
@@ -316,26 +523,46 @@
                     } else {
                         currentInput = currentInput.slice(0, -1);
                     }
+                } else if (action === "giveup") {
+                    // 放弃并查看答案
+                    if (!confirm("查看答案将放弃本题，确认吗？")) return;
+
+                    isLocked = true;
+                    currentInput = currentQ.answer;
+                    renderInput();
+
+                    fbEl.textContent = "标准答案如上。3 秒后自动进入下一题...";
+                    fbEl.style.color = '#EF4444';
+
+                    // TODO: 发送错题记录到后端
+
+                    nextTimer = setTimeout(() => {
+                        localStorage.removeItem(STORAGE_KEY);
+                        loadQuestion(currentQ.level, true);
+                    }, 3000);
                 } else if (action === "submit") {
                     if (currentInput === "") return;
 
                     const result = evaluateAnswer(currentInput, currentQ.answer);
-
                     fbEl.textContent = result.msg;
                     fbEl.style.color = result.status === 'correct' ? '#10B981' : (result.status === 'error' || result.status === 'wrong' ? '#EF4444' : '#F59E0B');
 
                     if (result.status === 'correct') {
-                        // TODO: 在这里向轻量级后端发送 { question: currentQ.question, isCorrect: true, ... }
-                        setTimeout(() => loadNewQuestion(currentQ.level), 1500);
-                    } else {
-                        // TODO: 记录错题数据
+                        isLocked = true;
+                        // TODO: 发送正确记录到后端
+
+                        nextTimer = setTimeout(() => {
+                            localStorage.removeItem(STORAGE_KEY);
+                            loadQuestion(currentQ.level, true);
+                        }, 1500);
                     }
                 }
-                renderInput();
+
+                if (!isLocked) renderInput();
             });
 
-            // 启动！
-            loadNewQuestion(3); // 默认加载难度 3
+            // 启动：有刷新前的存货就恢复，否则默认出难度 2 的题
+            loadQuestion(2);
         };
     </script>
 </body>
