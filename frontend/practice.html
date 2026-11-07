@@ -5,11 +5,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>整式化简练习</title>
-    <!-- 引入 KaTeX -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
-    <!-- 引入 Math.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.min.js"></script>
+    <!-- 本地资源：不依赖外网 CDN，学生设备只要连得上服务器就能加载 -->
+    <link rel="stylesheet" href="vendor/katex/katex.min.css">
+    <script src="vendor/katex/katex.min.js"></script>
+    <script src="vendor/math.js"></script>
 
     <style>
         :root {
@@ -226,6 +225,18 @@
             overflow-x: auto;
             color: #0F172A;
         }
+
+        /* 学生自己写的式子，放在过程最上面做对照 */
+        .step-row.step-mine {
+            border-bottom: 1px dashed #CBD5E1;
+            margin-bottom: 6px;
+            padding-bottom: 6px;
+        }
+
+        .step-row.step-mine .step-title,
+        .step-row.step-mine .step-body {
+            color: #B45309;
+        }
     </style>
 </head>
 
@@ -291,7 +302,7 @@
             <!-- 第六排：退格、提示、看答案、提交 -->
             <div class="key action" data-action="backspace">退格</div>
             <div class="key action" data-action="hint">提示</div>
-            <div class="key action" data-action="giveup" style="color: #EF4444;">看答案</div>
+            <div class="key action" data-action="giveup" style="color: #EF4444;">看解析</div>
             <div class="key submit" data-action="submit">提交答案</div>
         </div>
     </div>
@@ -815,6 +826,35 @@
         }
 
         // ==========================================
+        // 1c. 数学排版：优先 KaTeX，加载失败就退化成纯 HTML
+        // ==========================================
+        function escapeMathHtml(text) {
+            return String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/\*+/g, '·')
+                .replace(/\^(-?\d)/g, '<sup>$1</sup>');
+        }
+
+        // toLatex：可选，把显示文本转成 LaTeX（只在 KaTeX 可用时使用）
+        function renderMath(el, text, displayMode, toLatex) {
+            if (!el) return;
+            if (typeof katex !== 'undefined') {
+                try {
+                    katex.render(toLatex ? toLatex(text) : text, el, {
+                        displayMode: !!displayMode,
+                        throwOnError: false
+                    });
+                    return;
+                } catch (err) {
+                    // 落到下面的纯文本兜底
+                }
+            }
+            el.innerHTML = escapeMathHtml(text);
+        }
+
+        // ==========================================
         // 2. 前端交互与防作弊逻辑
         // ==========================================
         window.onload = async () => {
@@ -824,8 +864,7 @@
             let currentUser = null;
             let currentInput = "";
             let currentQ = null;
-            let isLocked = false;   // 答对或看答案后锁定，禁止继续输入
-            let nextTimer = null;   // 自动进入下一题的定时器（切难度时清掉，避免竞态跳题）
+            let isLocked = false;   // 一题结束后锁定，禁止继续输入
             let wrongCount = 0;     // 本题已经错了多少次（满 2 次放解析）
             let hintUsed = false;   // 本题是否已展开过提示
 
@@ -864,6 +903,15 @@
                 return 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
             }
 
+            // 隐私模式/禁用站点数据时 localStorage 会抛错，不能让它影响做题
+            function cacheQuestion() {
+                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(currentQ)); } catch (e) { /* 忽略 */ }
+            }
+
+            function clearCachedQuestion() {
+                try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* 忽略 */ }
+            }
+
             // 一题结束时上报一次；失败只警告，绝不影响做题
             function reportAttempt(result, revealed, studentAnswer) {
                 if (!currentUser || !currentQ || !currentQ.clientId) return;
@@ -900,8 +948,6 @@
 
             // 加载题目：默认优先读取本地存货，刷新页面不丢当前题
             function loadQuestion(level = 2, forceNew = false) {
-                if (nextTimer) { clearTimeout(nextTimer); nextTimer = null; }
-
                 isLocked = false;
                 currentInput = "";
                 wrongCount = 0;
@@ -921,12 +967,12 @@
                     currentQ = saved;
                     if (!currentQ.startedAt) currentQ.startedAt = Date.now();
                     if (!currentQ.clientId) currentQ.clientId = makeClientId();
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(currentQ));
+                    cacheQuestion();
                 } else {
                     currentQ = generateQuestion(level);
                     currentQ.startedAt = Date.now();
                     currentQ.clientId = makeClientId();
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(currentQ));
+                    cacheQuestion();
                 }
 
                 // 高亮当前难度
@@ -934,13 +980,18 @@
                     tab.classList.toggle('active', parseInt(tab.dataset.level) === currentQ.level);
                 });
 
-                katex.render(currentQ.question, qEl, { displayMode: true, throwOnError: false });
+                renderMath(qEl, currentQ.question, true);
                 renderInput();
             }
 
             function renderInput() {
-                let displayStr = currentInput === "" ? "\\textcolor{#9CA3AF}{\\text{请点击下方键盘输入}}" : currentInput.replace(/\*/g, '\\cdot ');
-                katex.render(displayStr, inEl, { displayMode: true, throwOnError: false });
+                if (currentInput === "") {
+                    inEl.textContent = "请点击下方键盘输入";
+                    inEl.style.color = "#9CA3AF";
+                    return;
+                }
+                inEl.style.color = "var(--primary)";
+                renderMath(inEl, currentInput, true, (text) => text.replace(/\*/g, '\\cdot '));
             }
 
             function resetPanels() {
@@ -977,12 +1028,31 @@
             }
 
             // 分步解析：每步都与标准答案等价，最后一步就是答案
-            function showSteps() {
+            // studentAnswer：学生自己写的式子；非空且没有完全做对时，顶部多一行对照
+            function showSteps(studentAnswer) {
                 stepsEl.innerHTML = "";
                 const title = document.createElement('div');
                 title.className = 'panel-title';
                 title.textContent = '完整过程';
                 stepsEl.appendChild(title);
+
+                const mine = String(studentAnswer || '').trim();
+                if (mine && evaluateAnswer(mine, currentQ.answer).status !== 'correct') {
+                    const row = document.createElement('div');
+                    row.className = 'step-row step-mine';
+
+                    const label = document.createElement('span');
+                    label.className = 'step-title';
+                    label.textContent = '你的答案';
+
+                    const body = document.createElement('span');
+                    body.className = 'step-body';
+                    renderMath(body, mine, false, (text) => text.replace(/\*/g, '\\cdot '));
+
+                    row.appendChild(label);
+                    row.appendChild(body);
+                    stepsEl.appendChild(row);
+                }
 
                 buildSteps(currentQ.question, currentQ.answer).forEach((step, i) => {
                     const row = document.createElement('div');
@@ -994,16 +1064,7 @@
 
                     const body = document.createElement('span');
                     body.className = 'step-body';
-
-                    if (typeof katex !== 'undefined') {
-                        try {
-                            katex.render(step.expr, body, { displayMode: false, throwOnError: false });
-                        } catch (err) {
-                            body.textContent = step.expr;
-                        }
-                    } else {
-                        body.textContent = step.expr;
-                    }
+                    renderMath(body, step.expr, false);
 
                     row.appendChild(label);
                     row.appendChild(body);
@@ -1027,7 +1088,7 @@
                 if (newLevel === currentQ.level) return;
                 if (!confirm("切换难度将放弃当前题目（不计入记录），确认切换吗？")) return;
 
-                localStorage.removeItem(STORAGE_KEY);
+                clearCachedQuestion();
                 loadQuestion(newLevel, true);
             });
 
@@ -1054,23 +1115,19 @@
                 } else if (action === "hint") {
                     showHints();
                 } else if (action === "giveup") {
-                    // 放弃并查看答案
-                    if (!confirm("查看答案将放弃本题，确认吗？")) return;
+                    // 看解析：和「错两次」一样给出完整过程，而不是只丢一个最简答案
+                    if (!confirm("查看解析将放弃本题（记为看解析），确认吗？")) return;
 
                     const beforeGiveUp = currentInput;
-                    isLocked = true;
                     currentInput = currentQ.answer;
                     renderInput();
 
-                    fbEl.textContent = "标准答案如上。3 秒后自动进入下一题...";
-                    fbEl.style.color = '#EF4444';
+                    showSteps(beforeGiveUp);
+                    fbEl.textContent = "标准答案如上，完整过程在下面。看完点「下一题」继续。";
+                    fbEl.style.color = '#F59E0B';
 
+                    enterResultMode();
                     reportAttempt('wrong', true, beforeGiveUp);
-
-                    nextTimer = setTimeout(() => {
-                        localStorage.removeItem(STORAGE_KEY);
-                        loadQuestion(currentQ.level, true);
-                    }, 3000);
                 } else if (action === "submit") {
                     if (currentInput === "") return;
 
@@ -1078,19 +1135,15 @@
                     fbEl.style.color = result.status === 'correct' ? '#10B981' : (result.status === 'error' || result.status === 'wrong' ? '#EF4444' : '#F59E0B');
 
                     if (result.status === 'correct') {
-                        fbEl.textContent = result.msg;
-                        isLocked = true;
+                        fbEl.textContent = result.msg + " 完整过程在下面，对照检查一下，看完点「下一题」。";
                         reportAttempt('correct', false, currentInput);
-
-                        nextTimer = setTimeout(() => {
-                            localStorage.removeItem(STORAGE_KEY);
-                            loadQuestion(currentQ.level, true);
-                        }, 1500);
+                        showSteps(currentInput);
+                        enterResultMode();
                     } else if (result.status === 'wrong') {
                         wrongCount++;
                         if (wrongCount >= 2) {
                             // 同一题错了两次：给出完整过程，本题结束
-                            showSteps();
+                            showSteps(currentInput);
                             fbEl.textContent = "这题错了两次，完整过程在下面，对照看看是哪一步出的问题。看完点「下一题」。";
                             enterResultMode();
                             reportAttempt('wrong', true, currentInput);
@@ -1101,7 +1154,7 @@
                         fbEl.textContent = result.msg;
                     }
                 } else if (action === "next") {
-                    localStorage.removeItem(STORAGE_KEY);
+                    clearCachedQuestion();
                     loadQuestion(currentQ.level, true);
                     return; // 已经换题，不再渲染旧输入
                 }
@@ -1110,24 +1163,49 @@
             });
 
             // ---------- 启动：先确认登录，再出题 ----------
-            const me = await fetchMe();
-            if (!me) {
-                location.replace('index.html');
-                return;
+            function showBootError(err) {
+                const msg = (err && err.message) ? err.message : String(err);
+                fbEl.textContent = '页面初始化失败：' + msg + '（按 F12 看控制台详情）';
+                fbEl.style.color = '#EF4444';
+                const whoEl = document.getElementById('who');
+                if (whoEl) whoEl.textContent = '初始化失败';
             }
-            rememberUser(me);
 
-            const logoutBtn = document.getElementById('logout');
-            if (logoutBtn) {
-                logoutBtn.addEventListener('click', async () => {
-                    try {
-                        await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
-                    } catch (err) { /* 忽略，退出后照样回登录页 */ }
+            try {
+                if (typeof katex === 'undefined') {
+                    console.warn('[poly-drill] KaTeX 未加载，已改用纯文本排版');
+                }
+                if (typeof math === 'undefined') {
+                    console.warn('[poly-drill] mathjs 未加载，题目无法正常生成');
+                }
+
+                const me = await fetchMe();
+                if (!me) {
                     location.replace('index.html');
-                });
-            }
+                    return;
+                }
+                rememberUser(me);
 
-            loadQuestion(2);
+                const logoutBtn = document.getElementById('logout');
+                if (logoutBtn) {
+                    logoutBtn.addEventListener('click', async () => {
+                        try {
+                            await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+                        } catch (err) { /* 忽略，退出后照样回登录页 */ }
+                        location.replace('index.html');
+                    });
+                }
+
+                loadQuestion(2);
+
+                if (typeof math === 'undefined') {
+                    fbEl.textContent = '题目库未加载，请刷新页面（Ctrl+F5）';
+                    fbEl.style.color = '#EF4444';
+                }
+            } catch (err) {
+                console.error('[poly-drill] 初始化失败:', err);
+                showBootError(err);
+            }
         };
     </script>
 </body>

@@ -1,11 +1,12 @@
 // test/ui.smoke.js —— 练习页交互冒烟（最小 DOM 桩，不需要浏览器）
-// 覆盖：出题渲染 / 提示 / 错两次给解析 / 锁键盘 / 下一题
+// 覆盖：出题渲染 / 提示 / 答对给过程 / 错两次给过程 / 看解析给过程 + 学生答案对照 / 锁键盘 / 下一题
 // 用法：node test/ui.smoke.js
 const fs = require('fs');
 const path = require('path');
-const math = require('mathjs');
 
 const root = path.join(__dirname, '..');
+// 用浏览器实际加载的那份 mathjs（frontend/vendor/math.js），保证测试和线上一致
+const math = require(path.join(root, 'frontend/vendor/math.js'));
 const html = fs.readFileSync(path.join(root, 'frontend/practice.html'), 'utf8');
 const inline = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)][0][1];
 
@@ -58,9 +59,10 @@ function mk(id, tag, classes) {
     return el;
 }
 
-[1, 2, 3, 4].forEach(lv => {
+const tabEls = [1, 2, 3, 4].map(lv => {
     const el = mk('', 'button', 'level-tab');
     el.dataset.level = String(lv);
+    return el;
 });
 
 const qEl = mk('question-display');
@@ -166,50 +168,97 @@ const hintCountBefore = hintsEl.children.length;
 clickKey('hint');
 check(hintsEl.children.length === hintCountBefore, '重复点提示不应重复展开');
 
-// 3. 第一次答错 -> 只提示还有一次机会
-type('2x-6-4x+4');
+// 3. 答对也给完整过程，并且停在这一题不再自动跳
+type('-2x-10');
 clickKey('submit');
-check(/还有 1 次机会/.test(fbEl.textContent), '第一次错应有提示语，实际: ' + fbEl.textContent);
-check(stepsEl.hidden === true, '第一次错不应直接给解析');
+check(/正确/.test(fbEl.textContent), '答对应提示正确，实际: ' + fbEl.textContent);
+check(stepsEl.hidden === false, '答对后也应展开完整过程');
+check(keys.submit.textContent === '下一题' && keys.submit.dataset.action === 'next',
+    '答对后应停在本题等「下一题」，实际按钮: ' + keys.submit.textContent);
+const okRows = stepsEl.children;
+check(okRows.length >= 3, '答对的过程应有标题 + 至少 2 步，实际 ' + okRows.length);
+check(!okRows[1].classList.contains('step-mine'), '答对时不该出现「你的答案」对照行');
+const okLast = okRows[okRows.length - 1].children[1];
+check(String(okLast._tex).replace(/\s+/g, '') === FixedQuestion.answer, '最后一步应等于答案: ' + okLast._tex);
 
-// 4. 第二次答错 -> 出解析、锁键盘、按钮变下一题
-clickKey('submit');
-check(stepsEl.hidden === false, '错两次应展开完整过程');
-check(/错了两次/.test(fbEl.textContent), '二次错反馈不对: ' + fbEl.textContent);
-check(keys.submit.textContent === '下一题' && keys.submit.dataset.action === 'next', '提交键应变成下一题');
-const rows = stepsEl.children.slice(1);
-check(rows.length >= 3, '解析步数应 >= 3，实际 ' + rows.length);
-const lastBody = rows.length ? rows[rows.length - 1].children[1] : { _tex: '' };
-check(String(lastBody._tex).replace(/\s+/g, '') === FixedQuestion.answer, '最后一步应等于答案: ' + lastBody._tex);
-
-// 5. 锁定后键盘无效
+// 4. 一题结束后键盘无效
 const beforeLock = inEl._tex;
 clickKey('k_5');
-check(inEl._tex === beforeLock, '解析展开后键盘应被锁住');
+check(inEl._tex === beforeLock, '本题结束后键盘应被锁住');
 
-// 6. 下一题
+// 5. 下一题：清空面板、按钮复原
 const oldQuestion = qEl._tex;
 clickKey('submit');
 check(qEl._tex !== oldQuestion, '点下一题应换新题');
 check(stepsEl.hidden === true && hintsEl.hidden === true, '换题后应清空提示与解析');
 check(keys.submit.textContent === '提交答案' && keys.submit.dataset.action === 'submit', '换题后按钮应复原');
 
-// 7. 上报：本题结束时应向后端发过一次记录
-await new Promise(r => setImmediate(r));
-const posted = apiCalls.filter(c => c.url === '/api/attempts');
-check(posted.length === 1, '应在本题结束时上报 1 次，实际 ' + posted.length);
-if (posted.length) {
-    let payload = null;
-    try { payload = JSON.parse(posted[0].opts.body); } catch (e) { payload = null; }
-    check(!!payload, '上报内容应是 JSON');
-    check(payload && payload.revealed === true, '看解析的题应标记 revealed');
-    check(payload && payload.result === 'wrong', '结果应是 wrong');
-    check(payload && payload.clientId === 'c_test', '应带上 clientId');
-    check(payload && payload.level === 2, '应带难度');
-}
+// 6. 错两次：出过程，并把学生原答案放在最上面做对照
+type('555');
+clickKey('submit');
+check(/还有 1 次机会/.test(fbEl.textContent), '第一次错应有提示语，实际: ' + fbEl.textContent);
+check(stepsEl.hidden === true, '第一次错不应直接给解析');
 
-// 8. 顶部显示当前学生
+clickKey('submit');
+check(stepsEl.hidden === false, '错两次应展开完整过程');
+check(/错了两次/.test(fbEl.textContent), '二次错反馈不对: ' + fbEl.textContent);
+check(keys.submit.textContent === '下一题', '错两次后应变成下一题');
+const wrongRows = stepsEl.children;
+const wrongMine = wrongRows[1];
+check(wrongMine && wrongMine.classList.contains('step-mine'), '错两次时应显示「你的答案」对照行');
+check(wrongMine.children[0].textContent === '你的答案', '对照行标签不对: ' + wrongMine.children[0].textContent);
+check(String(wrongMine.children[1]._tex) === '555', '对照行应显示学生原答案，实际: ' + wrongMine.children[1]._tex);
+check(wrongRows.length >= 4, '应含标题 + 对照行 + 至少 2 步，实际 ' + wrongRows.length);
+
+// 7. 错两次后点下一题换题
+const wrongQuestion = qEl._tex;
+clickKey('submit');
+check(qEl._tex !== wrongQuestion, '错两次后点下一题应换题');
+
+// 8. 看解析：同样给完整过程 + 对照，并停在这一题
+type('9x+9x');
+clickKey('giveup');
+check(stepsEl.hidden === false, '看解析应展开完整过程');
+check(keys.submit.textContent === '下一题', '看解析后应停在本题等「下一题」，实际: ' + keys.submit.textContent);
+const giveRows = stepsEl.children;
+const giveMine = giveRows[1];
+check(giveMine && giveMine.classList.contains('step-mine'), '看解析时应显示「你的答案」对照行');
+check(String(giveMine.children[1]._tex) === '9x+9x', '对照行应显示学生原答案，实际: ' + giveMine.children[1]._tex);
+check(giveRows.length >= 4, '看解析应含标题 + 对照行 + 至少 2 步，实际 ' + giveRows.length);
+const norm = (s) => String(s).replace(/\s+/g, '').replace(/\\cdot/g, '*');
+const giveLast = giveRows[giveRows.length - 1].children[1];
+check(String(giveLast._tex).length > 0, '看解析的最后一步不应为空');
+check(norm(inEl._tex) === norm(giveLast._tex), '看解析时输入区应显示标准答案，实际: ' + inEl._tex);
+
+// 9. 看解析后键盘无效
+const beforeLock2 = inEl._tex;
+clickKey('k_5');
+check(inEl._tex === beforeLock2, '看解析后键盘应被锁住');
+
+// 10. 上报：答对 / 错两次 / 看解析各 1 条，只有后两条标 revealed
+await new Promise(r => setImmediate(r));
+const posts = apiCalls.filter(c => c.url === '/api/attempts').map(c => {
+    try { return JSON.parse(c.opts.body); } catch (e) { return null; }
+});
+check(posts.length === 3, '三题应各上报 1 次，实际 ' + posts.length);
+check(posts.every(Boolean), '上报内容应是 JSON');
+check(posts[0] && posts[0].result === 'correct' && posts[0].revealed === false, '答对应为 correct 且未 revealed');
+check(posts[0] && posts[0].clientId === 'c_test', '应带上 clientId');
+check(posts[1] && posts[1].result === 'wrong' && posts[1].revealed === true, '错两次应记 revealed');
+check(posts[2] && posts[2].result === 'wrong' && posts[2].revealed === true, '看解析应记 revealed');
+check(posts[2] && posts[2].studentAnswer === '9x+9x', '看解析应带上学生原答案');
+check(posts.every(p => p && p.level === 2), '应带难度');
+
+// 11. 顶部显示当前学生
 check(/小明/.test(whoEl.textContent), '顶部应显示学生姓名，实际: ' + whoEl.textContent);
+
+// 12. KaTeX 渲染失败时要退化成纯文本，题目仍然看得见
+katex.render = () => { throw new Error('simulated katex failure'); };
+(levelTabs.handlers.click || []).forEach(fn => fn({ target: tabEls[2] }));
+await new Promise(r => setImmediate(r));
+const shownQuestion = String(qEl._html || qEl.textContent || '');
+check(shownQuestion.length > 0, 'KaTeX 失败时题目应退化为纯文本，实际为空');
+check(/[0-9xab(]/.test(shownQuestion), '退化内容应包含题目字符，实际: ' + shownQuestion);
 
 // ---------- 汇总 ----------
 console.log('=== 交互冒烟 ===');
