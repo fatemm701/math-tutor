@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>整式化简练习</title>
+    <!-- 引入 KaTeX 样式和脚本 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --bg: #F9FAFB;
+            --key-bg: #FFFFFF;
+            --key-active: #E5E7EB;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 500px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* 题目与输入展示区 */
+        .display-board {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .question-label {
+            font-size: 0.9rem;
+            color: #6B7280;
+            margin-bottom: 10px;
+        }
+
+        .katex-display {
+            margin: 0 !important;
+        }
+
+        /* 覆盖 KaTeX 默认边距 */
+
+        /* 软键盘区 */
+        .keyboard {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+
+        .key {
+            background: var(--key-bg);
+            border: 1px solid #D1D5DB;
+            border-radius: 8px;
+            padding: 15px 0;
+            font-size: 1.25rem;
+            font-weight: 500;
+            text-align: center;
+            cursor: pointer;
+            user-select: none;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+            transition: background 0.1s;
+        }
+
+        .key:active {
+            background: var(--key-active);
+            transform: scale(0.98);
+        }
+
+        .key.action {
+            background: #E5E7EB;
+            font-size: 1rem;
+        }
+
+        .key.submit {
+            background: var(--primary);
+            color: white;
+            border: none;
+        }
+
+        .key.submit:active {
+            background: #4338CA;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <!-- 展示区 -->
+        <div class="display-board">
+            <div class="question-label">当前题目 (进阶)</div>
+            <div id="question-display"></div>
+            <div class="question-label" style="margin-top: 15px;">你的答案</div>
+            <div id="input-display" style="color: var(--primary); min-height: 35px;"></div>
+        </div>
+
+        <!-- 软键盘区 -->
+        <div class="keyboard" id="keyboard">
+            <!-- 第一排：数字 -->
+            <div class="key" data-val="7">7</div>
+            <div class="key" data-val="8">8</div>
+            <div class="key" data-val="9">9</div>
+            <div class="key" data-val="+">+</div>
+        
+            <!-- 第二排：数字 -->
+            <div class="key" data-val="4">4</div>
+            <div class="key" data-val="5">5</div>
+            <div class="key" data-val="6">6</div>
+            <div class="key" data-val="-">-</div>
+        
+            <!-- 第三排：数字与括号 -->
+            <div class="key" data-val="1">1</div>
+            <div class="key" data-val="2">2</div>
+            <div class="key" data-val="3">3</div>
+            <div class="key" data-val="(">(</div>
+        
+            <!-- 第四排：零、变量 x、括号 -->
+            <div class="key" data-val="0">0</div>
+            <div class="key" data-val="x">x</div>
+            <div class="key" data-val=")">)</div>
+            <div class="key action" data-action="backspace">退格</div>
+        
+            <!-- 第五排：双字母与独立指数键 -->
+            <div class="key" data-val="a">a</div>
+            <div class="key" data-val="b">b</div>
+            <!-- 独立的指数按键，按下去会在当前字符串末尾追加 ^2 或 ^3 -->
+            <div class="key" data-val="^2">²</div>
+            <div class="key" data-val="^3">³</div>
+        
+            <!-- 提交按钮独占一行或与键盘平齐 -->
+            <div class="key submit" data-action="submit" style="grid-column: span 4;">提交答案</div>
+        </div>
+    </div>
+
+    <script>
+        // 在浏览器加载完 KaTeX 后执行
+        window.onload = () => {
+            const questionStr = "2x(x - 3) - (x^2 - 4x)"; // 模拟我们上一节的出题函数生成的题目
+            let currentInput = ""; // 核心状态：保存标准数学字符串，用于传给 math.js
+
+            const questionEl = document.getElementById("question-display");
+            const inputEl = document.getElementById("input-display");
+
+            // 1. 渲染题目
+            katex.render(questionStr, questionEl, { displayMode: true, throwOnError: false });
+
+            // 2. 实时渲染输入的公式
+            function renderInput() {
+                let displayStr = currentInput;
+
+                // 如果为空，显示灰色提示语 (利用 LaTeX 的 \textcolor)
+                if (displayStr === "") {
+                    displayStr = "\\textcolor{#9CA3AF}{\\text{请点击下方键盘输入}}";
+                }
+
+                katex.render(displayStr, inputEl, {
+                    displayMode: true,
+                    throwOnError: false // 防止学生输入非法结构(如单独的括号)时页面崩溃
+                });
+            }
+
+            // 3. 软键盘事件代理
+            document.getElementById("keyboard").addEventListener("click", (e) => {
+                const btn = e.target.closest('.key');
+                if (!btn) return;
+
+                const val = btn.dataset.val;
+                const action = btn.dataset.action;
+
+                if (val) {
+                    currentInput += val;
+                } else if (action === "backspace") {
+                    // 如果末尾是指数标识，一次性删掉两个字符 (^ 和 数字)
+                    if (currentInput.match(/\^[23]$/)) {
+                        currentInput = currentInput.slice(0, -2);
+                    } else {
+                        currentInput = currentInput.slice(0, -1);
+                    }
+                } else if (action === "submit") {
+                    if (currentInput === "") return alert("请先输入答案");
+                    // 这里将是与后端判卷 API 交互的地方
+                    alert(`将向后端发送验证：\n题目: ${questionStr}\n学生答案: ${currentInput}`);
+                }
+
+                renderInput();
+            });
+
+            // 初始化空状态渲染
+            renderInput();
+        };
+    </script>
+</body>
+
+</html>
