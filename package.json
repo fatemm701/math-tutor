@@ -4,7 +4,7 @@
   "description": "多项式化简练习：浏览器端出题判分，服务端只存账号与做题记录",
   "main": "backend/server.js",
   "scripts": {
-    "test": "node test/engine.test.js && node test/ui.smoke.js && node test/teacher.smoke.js && node test/api.test.js",
+    "test": "node test/engine.test.js && node test/ui.smoke.js && node test/auth.smoke.js && node test/teacher.smoke.js && node test/api.test.js",
     "start": "node backend/server.js"
   },
   "engines": {

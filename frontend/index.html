@@ -11,6 +11,12 @@
             --bg: #F9FAFB;
         }
 
+        /* 关键：下面给 label 设了 display:flex，会盖掉浏览器默认的 [hidden]{display:none}，
+           导致"隐藏"的输入行其实一直显示。这里用 !important 把它压回来。 */
+        [hidden] {
+            display: none !important;
+        }
+
         body {
             font-family: system-ui, -apple-system, sans-serif;
             background-color: var(--bg);
@@ -197,6 +203,10 @@
                 <input id="invite" type="text" maxlength="12" placeholder="老师给你的 6 位邀请码">
             </label>
 
+            <label id="teacher-row" hidden>管理员口令
+                <input id="teacher-invite" type="text" maxlength="64" placeholder="向管理员索取" autocomplete="off">
+            </label>
+
             <button type="submit" class="submit" id="submit-btn">登录</button>
             <p id="msg" class="msg"></p>
         </form>
@@ -218,7 +228,10 @@
         }
 
         function syncRoleRow() {
-            $('invite-row').hidden = !(mode === 'register' && currentRole() === 'student');
+            const isRegister = mode === 'register';
+            const role = currentRole();
+            $('invite-row').hidden = !(isRegister && role === 'student');
+            $('teacher-row').hidden = !(isRegister && role === 'teacher');
         }
 
         function setMode(next) {
@@ -272,7 +285,8 @@
                     name,
                     password,
                     role,
-                    inviteCode: role === 'student' ? $('invite').value.trim() : ''
+                    inviteCode: role === 'student' ? $('invite').value.trim() : '',
+                    teacherInvite: role === 'teacher' ? $('teacher-invite').value.trim() : ''
                 });
 
                 if (data && data.inviteCode) {

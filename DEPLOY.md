@@ -165,14 +165,18 @@ docker image prune -f                  # 清理悬空镜像
 | 部署目录 | `/opt/poly-drill`，数据 `/opt/poly-drill/data/db.json` |
 | 端口 | 宿主 **3001** → 容器 3000（宿主 3000 已被 `open-webui` 占用） |
 | 老师注册口令 | `/opt/poly-drill/.env` 里的 `TEACHER_INVITE` |
+| 对外地址 | `https://poly-drill.gyf-time.cn`（NPM → `172.17.0.1:3001`，Let's Encrypt） |
 | 已有服务 | `nginx-proxy-manager`（80/443）、open-webui、sillytavern 等 |
 
-公网放行情况：这台机器目前只对公网开了 **80/443**（22 供 SSH）。
+公网只开 **80/443**（22 供 SSH），3001 不对公网开放，访问一律走域名 + HTTPS。
 
-- 想直接 `http://62.234.12.76:3001` 访问：云控制台安全组加一条 `TCP:3001` 入站规则；
-- 想走域名 + HTTPS（推荐，现有 NPM 直接可用）：Proxy Host 转发到 `172.17.0.1:3001`
-  （docker0 网关，已确认），然后在 `.env` 里设 `COOKIE_SECURE=1`、`TRUST_PROXY=1`，
-  执行 `docker compose up -d`。
+因为走 HTTPS，`.env` 里开了这两项：
 
-改完 `.env` 一定要 `docker compose up -d`（不用 `--build`），否则容器还是旧环境变量。
+```ini
+COOKIE_SECURE=1     # 会话 Cookie 只走 HTTPS
+TRUST_PROXY=1       # 信任 NPM 的 X-Forwarded-For，登录失败限速按真实 IP 计
+```
+
+改 `.env` 后执行 `docker compose up -d`（不用 `--build`），否则容器还是旧环境变量。
+注意：`COOKIE_SECURE=1` 时若绕过 HTTPS 直接访问 `http://IP:3001`，会出现"登录成功但立刻掉登录"，属预期行为。
 
