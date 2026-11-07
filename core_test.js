@@ -48,6 +48,6 @@ function evaluateAnswer(studentAns, standardAns) {
 // --- 细化状态测试用例 ---
 const standard = '2 * (x - 3) - 4 * (-x + 1)'; // 最简结果应为 6x - 10
 
-console.log('测试 1 (带括号):', evaluateAnswer('2x - 6 - 4(-x + 1)', standard));
+console.log('测试 1 (带括号):', evaluateAnswer('2*x - 6 - 4(-x + 1)', standard));
 console.log('测试 2 (未合并):', evaluateAnswer('2x - 6 + 4x - 4', standard));
-console.log('测试 3 (全做完):', evaluateAnswer('6x - 10', standard));
+console.log('测试 3 (全做完):', evaluateAnswer('6*x - 10', standard));

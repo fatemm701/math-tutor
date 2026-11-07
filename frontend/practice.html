@@ -116,39 +116,39 @@
 
         <!-- 软键盘区 -->
         <div class="keyboard" id="keyboard">
-            <!-- 第一排：数字 -->
+            <!-- 第一排：数字与加号 -->
             <div class="key" data-val="7">7</div>
             <div class="key" data-val="8">8</div>
             <div class="key" data-val="9">9</div>
             <div class="key" data-val="+">+</div>
         
-            <!-- 第二排：数字 -->
+            <!-- 第二排：数字与减号 -->
             <div class="key" data-val="4">4</div>
             <div class="key" data-val="5">5</div>
             <div class="key" data-val="6">6</div>
             <div class="key" data-val="-">-</div>
         
-            <!-- 第三排：数字与括号 -->
+            <!-- 第三排：数字与乘号 -->
             <div class="key" data-val="1">1</div>
             <div class="key" data-val="2">2</div>
             <div class="key" data-val="3">3</div>
-            <div class="key" data-val="(">(</div>
+            <div class="key" data-val="*">×</div>
         
-            <!-- 第四排：零、变量 x、括号 -->
+            <!-- 第四排：零、变量与括号 -->
             <div class="key" data-val="0">0</div>
             <div class="key" data-val="x">x</div>
+            <div class="key" data-val="(">(</div>
             <div class="key" data-val=")">)</div>
-            <div class="key action" data-action="backspace">退格</div>
         
-            <!-- 第五排：双字母与独立指数键 -->
+            <!-- 第五排：双字母与指数 -->
             <div class="key" data-val="a">a</div>
             <div class="key" data-val="b">b</div>
-            <!-- 独立的指数按键，按下去会在当前字符串末尾追加 ^2 或 ^3 -->
             <div class="key" data-val="^2">²</div>
             <div class="key" data-val="^3">³</div>
         
-            <!-- 提交按钮独占一行或与键盘平齐 -->
-            <div class="key submit" data-action="submit" style="grid-column: span 4;">提交答案</div>
+            <!-- 第六排：操作键（各占两列） -->
+            <div class="key action" data-action="backspace" style="grid-column: span 2;">退格</div>
+            <div class="key submit" data-action="submit" style="grid-column: span 2;">提交答案</div>
         </div>
     </div>
 
@@ -168,14 +168,17 @@
             function renderInput() {
                 let displayStr = currentInput;
 
-                // 如果为空，显示灰色提示语 (利用 LaTeX 的 \textcolor)
                 if (displayStr === "") {
                     displayStr = "\\textcolor{#9CA3AF}{\\text{请点击下方键盘输入}}";
+                } else {
+                    // 核心视觉优化：把后台认识的 '*'，渲染成优美的点乘号 '·'
+                    // 如果你更喜欢叉乘号，可以换成 '\\times '
+                    displayStr = displayStr.replace(/\*/g, '\\cdot ');
                 }
 
                 katex.render(displayStr, inputEl, {
                     displayMode: true,
-                    throwOnError: false // 防止学生输入非法结构(如单独的括号)时页面崩溃
+                    throwOnError: false
                 });
             }
 
