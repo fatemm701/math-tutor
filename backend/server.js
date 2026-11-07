@@ -11,6 +11,11 @@ const PORT = Number(process.env.PORT) || 3000;
 app.disable('x-powered-by');
 app.set('trust proxy', 1);                       // 放在 Nginx/Caddy 后面时能识别 HTTPS
 app.use(express.json({ limit: '64kb' }));
+// 本地第三方库（KaTeX / mathjs）：文件名基本不变，给长缓存，学生设备只下载一次
+app.use('/vendor', express.static(path.join(__dirname, '..', 'frontend', 'vendor'), {
+    maxAge: '30d',
+    immutable: true
+}));
 app.use(express.static(path.join(__dirname, '..', 'frontend')));
 
 app.get('/api/health', (req, res) => {

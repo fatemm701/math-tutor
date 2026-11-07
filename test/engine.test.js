@@ -2,9 +2,11 @@
 // 用法：node test/engine.test.js
 const fs = require('fs');
 const path = require('path');
-const math = require('mathjs');
 
 const root = path.join(__dirname, '..');
+// 用浏览器实际加载的那份 mathjs（frontend/vendor/math.js），保证测试和线上一致
+const math = require(path.join(root, 'frontend/vendor/math.js'));
+
 const html = fs.readFileSync(path.join(root, 'frontend/practice.html'), 'utf8');
 const start = html.indexOf('function rand(min, max, excludeZero');
 const end = html.indexOf('// 2. 前端交互与防作弊逻辑');
