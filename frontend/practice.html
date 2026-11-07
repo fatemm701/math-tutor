@@ -334,6 +334,18 @@
             return `${coef}${variable}`;
         }
 
+        // 拼接两项，自动合并符号：同号得正、异号得负
+        //   joinSigned('(4x + 10)', '-', '-4(x - 7)') -> '(4x + 10) + 4(x - 7)'
+        //   joinSigned('3(x + 1)',  '-', '-5x')       -> '3(x + 1) + 5x'
+        // 没有它的话，负系数的乘数接在写死的 +/- 后面就会出现 "+ -4(..)"、"- -5x"
+        function joinSigned(left, op, right) {
+            const text = String(right);
+            const neg = text.startsWith('-');
+            const body = neg ? text.slice(1) : text;
+            const plus = (op === '+') !== neg;
+            return `${left} ${plus ? '+' : '-'} ${body}`;
+        }
+
         // mathjs 会把隐式乘号当成单位或函数调用（a=are、b=bit、x(3) 当函数调用），
         // 解析前先补全显式乘号：3ab -> 3*a*b，x( -> x*(，)( -> )*(
         function normalizeExpr(expr) {
@@ -471,9 +483,9 @@
                 const A = rand(-10, 10);
                 const P1 = genPoly(['const', 'x'], 2, -5, 5);
                 const type = rand(1, 4);
-                if (type === 1) return `${A} - (${P1})`;
-                if (type === 2) return `${A} + (${P1})`;
-                if (type === 3) return `-(${P1}) + ${A}`;
+                if (type === 1) return joinSigned(String(A), '-', `(${P1})`);
+                if (type === 2) return joinSigned(String(A), '+', `(${P1})`);
+                if (type === 3) return joinSigned(`-(${P1})`, '+', String(A));
                 return `-(${P1})`;
             }
             else if (level === 2) {
@@ -483,10 +495,10 @@
                 const P2 = genPoly(['const', 'x'], 2, -10, 10);
                 const mono = formatTerm(rand(-5, 5), 'x');
                 const type = rand(1, 4);
-                if (type === 1) return `${k1}(${P1}) - ${k2}(${P2})`;
-                if (type === 2) return `${k1}(${P1}) - ${mono}`;
-                if (type === 3) return `(${P1}) + ${k2}(${P2})`;
-                return `(${P1}) - ${k2}(${P2})`;
+                if (type === 1) return joinSigned(`${k1}(${P1})`, '-', `${k2}(${P2})`);
+                if (type === 2) return joinSigned(`${k1}(${P1})`, '-', mono);
+                if (type === 3) return joinSigned(`(${P1})`, '+', `${k2}(${P2})`);
+                return joinSigned(`(${P1})`, '-', `${k2}(${P2})`);
             }
             else if (level === 3) {
                 const k = randMul(-4, 4);
@@ -495,10 +507,11 @@
                 const P2 = genPoly(['const', 'x', 'x^2'], 2, -6, 6);
                 const P3 = genPoly(['const', 'x'], 2, -4, 4);
                 const type = rand(1, 4);
-                if (type === 1) return `${mono} - ${k}(${P1} - (${P3}))`;
-                if (type === 2) return `${k}(${P1}) - ${mono}`;
-                if (type === 3) return `x(${P3}) - ${k}(${P2})`;
-                return `${mono} - (${k}(${P3}) - ${rand(1, 9)})`;
+                if (type === 1) return joinSigned(mono, '-', `${k}(${P1} - (${P3}))`);
+                if (type === 2) return joinSigned(`${k}(${P1})`, '-', mono);
+                if (type === 3) return joinSigned(`x(${P3})`, '-', `${k}(${P2})`);
+                const tail = joinSigned(`${k}(${P3})`, '-', String(rand(1, 9)));
+                return joinSigned(mono, '-', `(${tail})`);
             }
             else {
                 const k1 = randMul(-4, 4);
@@ -508,16 +521,18 @@
                 const P1 = genPoly(pool, rand(2, 3), -5, 5);
                 const P2 = genPoly(pool, 2, -5, 5);
                 const type = rand(1, 4);
-                if (type === 1) return `${mono} - ${k1}(${P1}) + ${formatTerm(k2, 'b')}`;
-                if (type === 2) return `${k1}(${P1}) - ${k2}(${P2})`;
-                if (type === 3) return `a(${genPoly(['a', 'b'], 2, -3, 3)}) - ${k2}(${P2})`;
-                return `-(${P1}) + ${k2}(${P2})`;
+                if (type === 1) return joinSigned(joinSigned(mono, '-', `${k1}(${P1})`), '+', formatTerm(k2, 'b'));
+                if (type === 2) return joinSigned(`${k1}(${P1})`, '-', `${k2}(${P2})`);
+                if (type === 3) return joinSigned(`a(${genPoly(['a', 'b'], 2, -3, 3)})`, '-', `${k2}(${P2})`);
+                return joinSigned(`-(${P1})`, '+', `${k2}(${P2})`);
             }
         }
 
         function generateQuestion(level = 1) {
             for (let i = 0; i < 500; i++) {
                 const expr = buildTemplate(level);
+                // 题面不许出现连续符号（+ -、- - 之类）：学生看着别扭，也容易跟着抄错
+                if (/[+\-][+\-]/.test(expr.replace(/\s+/g, ''))) continue;
                 if (!expr.includes('(')) continue;
                 let poly;
                 try {

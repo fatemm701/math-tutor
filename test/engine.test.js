@@ -34,6 +34,7 @@ for (let lv = 1; lv <= 4; lv++) {
 
         ok(!/(^|[^\d.])1\(/.test(q.question), '题面出现 1(...): ' + q.question);
         ok(!/-1\(/.test(q.question), '题面出现 -1(...): ' + q.question);
+        ok(!/[+\-]{2}/.test(norm(q.question)), '题面出现连续符号: ' + q.question);
         ok(q.question.includes('('), '题面没有括号: ' + q.question);
         ok(q.question !== '3 - (x + 3)', 'L' + lv + ' 命中兜底题');
 
