@@ -31,8 +31,12 @@ function evaluateAnswer(studentAns, standardAns) {
 
         if (isEquivalent && !hasParentheses && isMerged) {
             return { status: 'correct', msg: '完全正确' };
-        } else if (isEquivalent) {
-            return { status: 'partial', msg: '结果正确，但未完全化简去括号或合并同类项' };
+        } else if (isEquivalent && hasParentheses) {
+            // 含有括号，说明第一步展开都没做完
+            return { status: 'partial', msg: '未去括号' };
+        } else if (isEquivalent && !hasParentheses && !isMerged) {
+            // 没括号了，但是项数偏多，说明同类项没合并
+            return { status: 'partial', msg: '未合并同类项' };
         } else {
             return { status: 'wrong', msg: '答案错误' };
         }
@@ -41,10 +45,9 @@ function evaluateAnswer(studentAns, standardAns) {
     }
 }
 
-// --- 测试用例 ---
-const standard = '2 * (x - 3) - 4 * (-x + 1)'; // 标准答案应为 6x - 10
+// --- 细化状态测试用例 ---
+const standard = '2 * (x - 3) - 4 * (-x + 1)'; // 最简结果应为 6x - 10
 
-console.log('测试 1 (标准答案 6x-10):', evaluateAnswer('6x - 10', standard));
-console.log('测试 2 (换个位置 -10+6x):', evaluateAnswer('-10 + 6x', standard));
-console.log('测试 3 (未合并 2x-6+4x-4):', evaluateAnswer('2x - 6 + 4x - 4', standard));
-console.log('测试 4 (只合并一半 6x-6-4):', evaluateAnswer('6x - 6 - 4', standard));
+console.log('测试 1 (带括号):', evaluateAnswer('2x - 6 - 4(-x + 1)', standard));
+console.log('测试 2 (未合并):', evaluateAnswer('2x - 6 + 4x - 4', standard));
+console.log('测试 3 (全做完):', evaluateAnswer('6x - 10', standard));
