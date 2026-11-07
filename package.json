@@ -4,7 +4,8 @@
   "description": "",
   "main": "core_test.js",
   "scripts": {
-    "test": "node test/engine.test.js && node test/ui.smoke.js"
+    "test": "node test/engine.test.js && node test/ui.smoke.js && node test/api.test.js",
+    "start": "node backend/server.js"
   },
   "keywords": [],
   "author": "",

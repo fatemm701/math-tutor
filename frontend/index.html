@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>整式化简练习 · 登录</title>
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --bg: #F9FAFB;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 380px;
+            background: #fff;
+            border-radius: 14px;
+            padding: 24px;
+            box-shadow: 0 6px 18px -6px rgba(0, 0, 0, 0.15);
+            box-sizing: border-box;
+        }
+
+        h1 {
+            font-size: 1.15rem;
+            margin: 0 0 18px;
+            color: #111827;
+            text-align: center;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 18px;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 9px 0;
+            font-family: inherit;
+            font-size: 0.9rem;
+            font-weight: bold;
+            color: #4B5563;
+            background: #fff;
+            border: 1px solid #D1D5DB;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .tab.active {
+            background: var(--primary);
+            color: #fff;
+            border-color: var(--primary);
+        }
+
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        label {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            font-size: 0.85rem;
+            color: #4B5563;
+        }
+
+        input[type="text"],
+        input[type="password"] {
+            padding: 10px 12px;
+            font-size: 0.95rem;
+            font-family: inherit;
+            border: 1px solid #D1D5DB;
+            border-radius: 8px;
+            outline: none;
+            box-sizing: border-box;
+            width: 100%;
+        }
+
+        input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+        }
+
+        .roles {
+            display: flex;
+            gap: 16px;
+            font-size: 0.9rem;
+            color: #374151;
+        }
+
+        .role {
+            flex-direction: row;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+
+        .submit {
+            margin-top: 4px;
+            padding: 11px 0;
+            font-family: inherit;
+            font-size: 0.95rem;
+            font-weight: bold;
+            color: #fff;
+            background: var(--primary);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .submit:disabled {
+            opacity: 0.6;
+            cursor: default;
+        }
+
+        .msg {
+            margin: 0;
+            min-height: 18px;
+            font-size: 0.85rem;
+            color: #EF4444;
+            text-align: center;
+        }
+
+        .invite-panel {
+            text-align: center;
+            color: #374151;
+            font-size: 0.9rem;
+            line-height: 1.7;
+        }
+
+        .invite-code {
+            font-size: 1.6rem;
+            font-weight: bold;
+            letter-spacing: 0.28em;
+            color: var(--primary);
+            background: #EEF2FF;
+            border-radius: 10px;
+            padding: 10px 0;
+            margin: 6px 0 10px;
+        }
+
+        .hint {
+            color: #6B7280;
+            font-size: 0.82rem;
+        }
+
+        .go {
+            display: inline-block;
+            margin-top: 8px;
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>整式化简练习</h1>
+
+        <div class="tabs">
+            <button type="button" class="tab active" data-mode="login">登录</button>
+            <button type="button" class="tab" data-mode="register">注册</button>
+        </div>
+
+        <form id="auth-form">
+            <label>姓名
+                <input id="name" type="text" required maxlength="20" autocomplete="username">
+            </label>
+            <label>密码
+                <input id="password" type="password" required maxlength="64" autocomplete="current-password">
+            </label>
+
+            <div id="register-only" hidden>
+                <div class="roles">
+                    <label class="role"><input type="radio" name="role" value="student" checked> 我是学生</label>
+                    <label class="role"><input type="radio" name="role" value="teacher"> 我是老师</label>
+                </div>
+            </div>
+
+            <label id="invite-row" hidden>邀请码
+                <input id="invite" type="text" maxlength="12" placeholder="老师给你的 6 位邀请码">
+            </label>
+
+            <button type="submit" class="submit" id="submit-btn">登录</button>
+            <p id="msg" class="msg"></p>
+        </form>
+
+        <div id="invite-result" class="invite-panel" hidden>
+            <p>注册成功，你的邀请码是：</p>
+            <div class="invite-code" id="invite-code"></div>
+            <p class="hint">把这个码发给学生，他们注册时填它就能加入。</p>
+            <a class="go" href="practice.html">进入练习 →</a>
+        </div>
+    </div>
+    <script>
+        const $ = (id) => document.getElementById(id);
+        let mode = 'login';
+
+        function currentRole() {
+            const el = document.querySelector('input[name="role"]:checked');
+            return el ? el.value : 'student';
+        }
+
+        function syncRoleRow() {
+            $('invite-row').hidden = !(mode === 'register' && currentRole() === 'student');
+        }
+
+        function setMode(next) {
+            mode = next;
+            document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.mode === next));
+            $('register-only').hidden = next !== 'register';
+            $('submit-btn').textContent = next === 'login' ? '登录' : '注册';
+            $('password').setAttribute('autocomplete', next === 'login' ? 'current-password' : 'new-password');
+            $('msg').textContent = '';
+            syncRoleRow();
+        }
+
+        document.querySelectorAll('.tab').forEach(t => {
+            t.addEventListener('click', () => setMode(t.dataset.mode));
+        });
+        document.querySelectorAll('input[name="role"]').forEach(r => {
+            r.addEventListener('change', syncRoleRow);
+        });
+
+        async function api(path, body) {
+            const res = await fetch(path, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify(body)
+            });
+            let json = null;
+            try { json = await res.json(); } catch (e) { json = null; }
+            if (!res.ok || !json || !json.success) {
+                throw new Error((json && json.msg) || ('请求失败（HTTP ' + res.status + '）'));
+            }
+            return json.data;
+        }
+
+        $('auth-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = $('name').value.trim();
+            const password = $('password').value;
+            const role = currentRole();
+
+            $('msg').textContent = '';
+            $('submit-btn').disabled = true;
+            try {
+                if (mode === 'login') {
+                    await api('/api/auth/login', { name, password });
+                    location.replace('practice.html');
+                    return;
+                }
+
+                const data = await api('/api/auth/register', {
+                    name,
+                    password,
+                    role,
+                    inviteCode: role === 'student' ? $('invite').value.trim() : ''
+                });
+
+                if (data && data.inviteCode) {
+                    $('invite-code').textContent = data.inviteCode;
+                    $('auth-form').hidden = true;
+                    document.querySelector('.tabs').hidden = true;
+                    $('invite-result').hidden = false;
+                } else {
+                    location.replace('practice.html');
+                }
+            } catch (err) {
+                $('msg').textContent = err.message;
+            } finally {
+                $('submit-btn').disabled = false;
+            }
+        });
+
+        // 已经登录过就直接进练习页
+        (async () => {
+            try {
+                const res = await fetch('/api/auth/me', { credentials: 'same-origin' });
+                if (res.ok) location.replace('practice.html');
+            } catch (err) { /* 忽略，留在登录页 */ }
+        })();
+    </script>
+</body>
+
+</html>
+

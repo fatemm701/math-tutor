@@ -37,6 +37,49 @@
             gap: 15px;
         }
 
+        /* 顶部：当前账号 + 退出 */
+        .topbar {
+            width: 100%;
+            max-width: 500px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 12px;
+            font-size: 0.85rem;
+            color: #4B5563;
+        }
+
+        .topbar .who {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .topbar .actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 0 0 auto;
+        }
+
+        .topbar a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .topbar button {
+            font-family: inherit;
+            font-size: 0.8rem;
+            color: #4B5563;
+            background: #fff;
+            border: 1px solid #D1D5DB;
+            border-radius: 6px;
+            padding: 4px 10px;
+            cursor: pointer;
+        }
+
         /* 难度选择卡片 */
         .level-tabs {
             display: flex;
@@ -187,6 +230,13 @@
 </head>
 
 <body>
+
+    <div class="topbar">
+        <span class="who" id="who">加载中…</span>
+        <span class="actions">
+            <button type="button" id="logout">退出</button>
+        </span>
+    </div>
 
     <div class="container">
         <!-- 难度选择 -->
@@ -767,10 +817,11 @@
         // ==========================================
         // 2. 前端交互与防作弊逻辑
         // ==========================================
-        window.onload = () => {
-            const STORAGE_KEY = "poly_current_q";
+        window.onload = async () => {
             const LEVELS = [1, 2, 3, 4];
+            let STORAGE_KEY = "poly_current_q";
 
+            let currentUser = null;
             let currentInput = "";
             let currentQ = null;
             let isLocked = false;   // 答对或看答案后锁定，禁止继续输入
@@ -785,6 +836,62 @@
             const stepsEl = document.getElementById("steps-display");
             const levelTabs = document.getElementById("level-tabs");
             const submitKey = document.querySelector(".key.submit");
+
+            // ---------- 账号 ----------
+            async function fetchMe() {
+                try {
+                    const res = await fetch('/api/auth/me', { credentials: 'same-origin' });
+                    if (!res.ok) return null;
+                    const json = await res.json();
+                    return json && json.success ? json.data.user : null;
+                } catch (err) {
+                    return null;
+                }
+            }
+
+            function rememberUser(user) {
+                currentUser = user;
+                STORAGE_KEY = 'poly_current_q:' + user.id;   // 同一浏览器换人登录不会串题
+                const whoEl = document.getElementById('who');
+                if (whoEl) {
+                    const roleLabel = user.role === 'teacher' ? '老师' : '学生';
+                    const invite = user.inviteCode ? ' · 邀请码 ' + user.inviteCode : '';
+                    whoEl.textContent = roleLabel + '：' + user.name + invite;
+                }
+            }
+
+            function makeClientId() {
+                return 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+            }
+
+            // 一题结束时上报一次；失败只警告，绝不影响做题
+            function reportAttempt(result, revealed, studentAnswer) {
+                if (!currentUser || !currentQ || !currentQ.clientId) return;
+                const payload = {
+                    clientId: currentQ.clientId,
+                    level: currentQ.level,
+                    question: currentQ.question,
+                    answer: currentQ.answer,
+                    studentAnswer: studentAnswer || '',
+                    result,
+                    usedHint: hintUsed,
+                    revealed: !!revealed,
+                    ms: Math.max(0, Date.now() - (currentQ.startedAt || Date.now()))
+                };
+                fetch('/api/attempts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify(payload)
+                }).then(res => {
+                    if (res.ok) return null;
+                    return res.json()
+                        .catch(() => ({}))
+                        .then(json => { throw new Error((json && json.msg) || ('HTTP ' + res.status)); });
+                }).catch(err => {
+                    console.warn('[poly-drill] 记录上报失败（不影响做题）：' + err.message);
+                });
+            }
 
             function isValidQuestion(q) {
                 return !!q && typeof q.question === 'string' && typeof q.answer === 'string'
@@ -812,8 +919,13 @@
 
                 if (saved) {
                     currentQ = saved;
+                    if (!currentQ.startedAt) currentQ.startedAt = Date.now();
+                    if (!currentQ.clientId) currentQ.clientId = makeClientId();
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(currentQ));
                 } else {
                     currentQ = generateQuestion(level);
+                    currentQ.startedAt = Date.now();
+                    currentQ.clientId = makeClientId();
                     localStorage.setItem(STORAGE_KEY, JSON.stringify(currentQ));
                 }
 
@@ -906,16 +1018,15 @@
                 setSubmitKey('next', '下一题');
             }
 
-            // 难度切换（放弃当前题会记一次错题）
+            // 难度切换（放弃当前题，不计入记录）
             levelTabs.addEventListener("click", (e) => {
                 const tab = e.target.closest('.level-tab');
                 if (!tab) return;
 
                 const newLevel = parseInt(tab.dataset.level);
                 if (newLevel === currentQ.level) return;
-                if (!confirm("切换难度将放弃当前题目（计入错题），确认切换吗？")) return;
+                if (!confirm("切换难度将放弃当前题目（不计入记录），确认切换吗？")) return;
 
-                // TODO: 在这里向后端发送错题记录 API
                 localStorage.removeItem(STORAGE_KEY);
                 loadQuestion(newLevel, true);
             });
@@ -946,6 +1057,7 @@
                     // 放弃并查看答案
                     if (!confirm("查看答案将放弃本题，确认吗？")) return;
 
+                    const beforeGiveUp = currentInput;
                     isLocked = true;
                     currentInput = currentQ.answer;
                     renderInput();
@@ -953,7 +1065,7 @@
                     fbEl.textContent = "标准答案如上。3 秒后自动进入下一题...";
                     fbEl.style.color = '#EF4444';
 
-                    // TODO: 发送错题记录到后端
+                    reportAttempt('wrong', true, beforeGiveUp);
 
                     nextTimer = setTimeout(() => {
                         localStorage.removeItem(STORAGE_KEY);
@@ -968,7 +1080,7 @@
                     if (result.status === 'correct') {
                         fbEl.textContent = result.msg;
                         isLocked = true;
-                        // TODO: 发送正确记录到后端
+                        reportAttempt('correct', false, currentInput);
 
                         nextTimer = setTimeout(() => {
                             localStorage.removeItem(STORAGE_KEY);
@@ -981,6 +1093,7 @@
                             showSteps();
                             fbEl.textContent = "这题错了两次，完整过程在下面，对照看看是哪一步出的问题。看完点「下一题」。";
                             enterResultMode();
+                            reportAttempt('wrong', true, currentInput);
                         } else {
                             fbEl.textContent = result.msg + "（还有 1 次机会，再想想；卡住可以点「提示」）";
                         }
@@ -996,7 +1109,24 @@
                 if (!isLocked) renderInput();
             });
 
-            // 启动：有刷新前的存货就恢复，否则默认出难度 2 的题
+            // ---------- 启动：先确认登录，再出题 ----------
+            const me = await fetchMe();
+            if (!me) {
+                location.replace('index.html');
+                return;
+            }
+            rememberUser(me);
+
+            const logoutBtn = document.getElementById('logout');
+            if (logoutBtn) {
+                logoutBtn.addEventListener('click', async () => {
+                    try {
+                        await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+                    } catch (err) { /* 忽略，退出后照样回登录页 */ }
+                    location.replace('index.html');
+                });
+            }
+
             loadQuestion(2);
         };
     </script>

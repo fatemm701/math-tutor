@@ -70,6 +70,8 @@ const hintsEl = mk('hint-display');
 const stepsEl = mk('steps-display');
 const levelTabs = mk('level-tabs');
 const keyboard = mk('keyboard');
+const whoEl = mk('who');
+const logoutEl = mk('logout');
 
 const keys = {};
 function key(name, opts) {
@@ -102,15 +104,34 @@ const localStorage = {
 
 const katex = { render: (text, el) => { el._tex = text; el.textContent = text; } };
 
+// 假的 fetch：/api/auth/me 返回一个学生，/api/attempts 记下来
+const apiCalls = [];
+const fakeUser = { id: 'u_test', name: '小明', role: 'student' };
+const fetchStub = async (url, opts) => {
+    apiCalls.push({ url, opts: opts || {} });
+    if (url === '/api/auth/me') {
+        return { ok: true, status: 200, json: async () => ({ success: true, data: { user: fakeUser } }) };
+    }
+    if (url === '/api/attempts') {
+        return { ok: true, status: 200, json: async () => ({ success: true, data: { id: 'a_test' } }) };
+    }
+    return { ok: true, status: 200, json: async () => ({ success: true, data: null }) };
+};
+
+const fakeWindow = {
+    onload: null,
+    location: { replaced: null, replace(to) { this.replaced = to; } }
+};
+
 // ---------- 启动页面脚本 ----------
 const FixedQuestion = { level: 2, question: '2(x - 3) - 4(x + 1)', answer: '-2x-10' };
-store.set('poly_current_q', JSON.stringify(FixedQuestion));
+store.set('poly_current_q:u_test', JSON.stringify(
+    Object.assign({}, FixedQuestion, { startedAt: Date.now(), clientId: 'c_test' })
+));
 
-const fakeWindow = { onload: null };
-
-new Function('window', 'document', 'katex', 'localStorage', 'confirm', 'setTimeout', 'clearTimeout', 'math',
+new Function('window', 'document', 'katex', 'localStorage', 'confirm', 'setTimeout', 'clearTimeout', 'math', 'fetch',
     inline + '\n')(fakeWindow, document, katex, localStorage, () => true,
-    () => 0, () => { }, math);
+    () => 0, () => { }, math, fetchStub);
 
 const fails = [];
 const check = (cond, msg) => { if (!cond) fails.push(msg); };
@@ -120,8 +141,9 @@ const type = (s) => [...s].forEach(ch => {
     clickKey('k_' + ch);
 });
 
+(async () => {
 try {
-    fakeWindow.onload();
+    await fakeWindow.onload();
 } catch (err) {
     console.log('页面脚本初始化失败:', err.message);
     process.exit(1);
@@ -172,6 +194,23 @@ check(qEl._tex !== oldQuestion, '点下一题应换新题');
 check(stepsEl.hidden === true && hintsEl.hidden === true, '换题后应清空提示与解析');
 check(keys.submit.textContent === '提交答案' && keys.submit.dataset.action === 'submit', '换题后按钮应复原');
 
+// 7. 上报：本题结束时应向后端发过一次记录
+await new Promise(r => setImmediate(r));
+const posted = apiCalls.filter(c => c.url === '/api/attempts');
+check(posted.length === 1, '应在本题结束时上报 1 次，实际 ' + posted.length);
+if (posted.length) {
+    let payload = null;
+    try { payload = JSON.parse(posted[0].opts.body); } catch (e) { payload = null; }
+    check(!!payload, '上报内容应是 JSON');
+    check(payload && payload.revealed === true, '看解析的题应标记 revealed');
+    check(payload && payload.result === 'wrong', '结果应是 wrong');
+    check(payload && payload.clientId === 'c_test', '应带上 clientId');
+    check(payload && payload.level === 2, '应带难度');
+}
+
+// 8. 顶部显示当前学生
+check(/小明/.test(whoEl.textContent), '顶部应显示学生姓名，实际: ' + whoEl.textContent);
+
 // ---------- 汇总 ----------
 console.log('=== 交互冒烟 ===');
 if (fails.length === 0) console.log('  全部通过');
@@ -179,5 +218,6 @@ else {
     fails.forEach(f => console.log('  ✗ ' + f));
     process.exitCode = 1;
 }
+})();
 
 const window = { onload: null };

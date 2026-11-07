@@ -1,60 +1,81 @@
-// backend/server.js
+// backend/server.js —— Express 服务入口：静态页面 + 账号/记录 API
+// 计算全部在浏览器完成，这里不碰数学，只发页面、管登录、存记录
 const express = require('express');
 const path = require('path');
-const { generateQuestion, evaluateAnswer } = require('./core/mathEngine');
+const os = require('os');
+const store = require('./store');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
-// 解析 JSON 格式的请求体
-app.use(express.json());
+app.disable('x-powered-by');
+app.set('trust proxy', 1);                       // 放在 Nginx/Caddy 后面时能识别 HTTPS
+app.use(express.json({ limit: '64kb' }));
+app.use(express.static(path.join(__dirname, '..', 'frontend')));
 
-// 托管前端静态文件 (把之前写的 html 放入 frontend 文件夹)
-app.use(express.static(path.join(__dirname, '../frontend')));
+app.get('/api/health', (req, res) => {
+    const db = store.getDb();
+    res.json({ success: true, data: { ok: true, users: db.users.length, attempts: db.attempts.length } });
+});
 
-// --- API 路由 ---
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/attempts', require('./routes/attempts'));
+app.use('/api/teacher', require('./routes/teacher'));
 
-// 1. 获取题目接口
-app.get('/api/question', (req, res) => {
-    // 从 URL 参数中获取难度，默认为 1
-    const level = parseInt(req.query.level) || 1;
-    const qData = generateQuestion(level);
+app.use('/api', (req, res) => {
+    res.status(404).json({ success: false, msg: '接口不存在' });
+});
 
-    // 注意：不要把 standard_answer 传给前端，防止学生通过浏览器审查元素作弊
-    // 我们把标准答案暂时存在服务端 (后续可以用 session 或直接存入数据库)
-    // 这里为了最快打通全链路，我们暂时把它一起发给前端(仅做联调测试)，或者让前端在提交时带上题面，后端重新计算标准答案
-    res.json({
-        success: true,
-        data: {
-            level: qData.level,
-            question: qData.question,
-            hint: qData.hint
+// 统一错误响应：JSON 格式错误给 400，其它给 500
+app.use((err, req, res, next) => {
+    if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError)) {
+        return res.status(400).json({ success: false, msg: '请求体不是合法 JSON' });
+    }
+    console.error('[Poly-Drill] 服务器错误:', err && err.message);
+    res.status(500).json({ success: false, msg: '服务器内部错误' });
+});
+
+function localUrls(port) {
+    const rows = [{ label: '本机', url: `http://localhost:${port}` }];
+    const ifaces = os.networkInterfaces();
+    Object.keys(ifaces).forEach(name => {
+        (ifaces[name] || []).forEach(net => {
+            if (net.family !== 'IPv4' || net.internal) return;
+            rows.push({
+                label: /zerotier/i.test(name) ? 'ZeroTier' : '网卡',
+                url: `http://${net.address}:${port}`,
+                iface: name
+            });
+        });
+    });
+    return rows;
+}
+
+function start(port = PORT) {
+    const server = app.listen(port, () => {
+        const actual = server.address().port;
+        let db = null;
+        try { db = store.getDb(); } catch (err) { /* 数据损坏的提示在 getDb 里 */ }
+        console.log('[Poly-Drill] 数据文件: ' + store.DB_FILE);
+        localUrls(actual).forEach(r => {
+            const label = r.iface ? r.label + '(' + r.iface + ')' : r.label;
+            console.log('[Poly-Drill] ' + label + '  ' + r.url);
+        });
+        if (db) {
+            console.log('[Poly-Drill] 账号 ' + db.users.length + ' 个 / 记录 ' + db.attempts.length + ' 条');
         }
     });
-});
+    return server;
+}
 
-// 2. 提交并判卷接口
-app.post('/api/evaluate', (req, res) => {
-    const { question, studentAnswer } = req.body;
-
-    if (!question || !studentAnswer) {
-        return res.status(400).json({ success: false, msg: '缺少参数' });
+if (require.main === module) {
+    try {
+        store.getDb();
+    } catch (err) {
+        console.error('[Poly-Drill] 启动失败：' + err.message);
+        process.exit(1);
     }
+    start();
+}
 
-    // 后端利用 mathjs 的 rationalize 动态计算当前题面的标准答案，杜绝前端作弊
-    const { rationalize } = require('mathjs');
-    const standardAnswer = rationalize(question).toString();
-
-    // 调用核心判卷逻辑
-    const result = evaluateAnswer(studentAnswer, standardAnswer);
-
-    res.json({
-        success: true,
-        data: result // { status: 'correct'|'partial'|'wrong'|'error', msg: '...' }
-    });
-});
-
-app.listen(PORT, () => {
-    console.log(`[Poly-Drill] 服务器已启动: http://localhost:${PORT}`);
-    console.log(`[Poly-Drill] 答题页: http://localhost:${PORT}/practice.html`);
-});
+module.exports = { app, start };
