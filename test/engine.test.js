@@ -31,6 +31,7 @@ ok(!browserApi.test(simplifySource), 'engine-simplify.js 不应依赖浏览器 A
 ok(!/<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/.test(practiceHtml), 'practice.html 不应再有内联脚本');
 ok(!/\bfunction\s+(expandExpr|polyMul|generateQuestion|evaluateAnswer|buildSteps|hintsFor)\b/.test(practiceSource), 'practice.js 不应再定义数学引擎函数');
 ok(typeof core.expandExpr === 'function' && typeof core.parseToPoly === 'function', 'math-core.js 应导出基础多项式函数');
+ok(typeof core.toLatexText === 'function', 'math-core.js 应导出 toLatexText');
 ok(typeof E.generateQuestion === 'function' && typeof E.evaluateAnswer === 'function'
     && typeof E.buildSteps === 'function' && typeof E.hintsFor === 'function',
     'engine-simplify.js 应导出完整化简引擎 API');

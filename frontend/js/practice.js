@@ -14,7 +14,8 @@
         generateQuestion,
         evaluateAnswer,
         buildSteps,
-        hintsFor
+        hintsFor,
+        toLatexText
     } = engine;
         // ==========================================
         // 1c. 数学排版：优先 KaTeX，加载失败就退化成纯 HTML
@@ -28,12 +29,21 @@
                 .replace(/\^(-?\d)/g, '<sup>$1</sup>');
         }
 
-        // toLatex：可选，把显示文本转成 LaTeX（只在 KaTeX 可用时使用）
-        function renderMath(el, text, displayMode, toLatex) {
+        // 含分数时转成上下分式；整数题保持原写法，输入未完成时退回原文本
+        function displayLatex(text) {
+            const raw = String(text);
+            if (raw.indexOf('/') !== -1 && typeof toLatexText === 'function') {
+                const tex = toLatexText(raw);
+                if (tex) return tex;
+            }
+            return raw.replace(/\*/g, '\\cdot ');
+        }
+
+        function renderMath(el, text, displayMode) {
             if (!el) return;
             if (typeof katex !== 'undefined') {
                 try {
-                    katex.render(toLatex ? toLatex(text) : text, el, {
+                    katex.render(displayLatex(text), el, {
                         displayMode: !!displayMode,
                         throwOnError: false
                     });
@@ -208,7 +218,7 @@
                     return;
                 }
                 inEl.style.color = "var(--primary)";
-                renderMath(inEl, currentInput, true, (text) => text.replace(/\*/g, '\\cdot '));
+                renderMath(inEl, currentInput, true);
             }
 
             function resetPanels() {
@@ -264,7 +274,7 @@
 
                     const body = document.createElement('span');
                     body.className = 'step-body';
-                    renderMath(body, mine, false, (text) => text.replace(/\*/g, '\\cdot '));
+                    renderMath(body, mine, false);
 
                     row.appendChild(label);
                     row.appendChild(body);

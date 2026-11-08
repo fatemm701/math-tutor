@@ -153,6 +153,31 @@ const integerOnly = E.generateQuestion(2, { kind: 'integer' });
 ok(Array.isArray(integerOnly.tags) && integerOnly.tags.length === 0, 'integer 模式不应带标签');
 ok(!integerOnly.answer.includes('/'), 'integer 模式答案不应含分数: ' + integerOnly.answer);
 
+// ---------- 7. 显示 LaTeX：分数必须转成上下分式 ----------
+const latex = (expr) => core.toLatexText(expr);
+ok(latex('1/2(x + 4) - 3') === '\\dfrac{1}{2}\\left(x+4\\right)-3',
+    '1/2(x + 4) - 3 的显示 LaTeX 不符: ' + latex('1/2(x + 4) - 3'));
+ok(latex('1/2x + 3/4') === '\\dfrac{1}{2}x+\\dfrac{3}{4}',
+    '1/2x + 3/4 的显示 LaTeX 不符: ' + latex('1/2x + 3/4'));
+ok(latex('(x + 4)/2 - (x - 1)/3') === '\\dfrac{x+4}{2}-\\dfrac{x-1}{3}',
+    '(x + 4)/2 - (x - 1)/3 的显示 LaTeX 不符: ' + latex('(x + 4)/2 - (x - 1)/3'));
+ok(latex('x/2-1') === '\\dfrac{x}{2}-1', 'x/2-1 的显示 LaTeX 不符: ' + latex('x/2-1'));
+ok(latex('-x/2+3/4') === '-\\dfrac{x}{2}+\\dfrac{3}{4}',
+    '-x/2+3/4 的显示 LaTeX 不符: ' + latex('-x/2+3/4'));
+ok(latex('1/2(a + 2b) - 1/3(a - b)') === '\\dfrac{1}{2}\\left(a+2b\\right)-\\dfrac{1}{3}\\left(a-b\\right)',
+    '多字母分数式的显示 LaTeX 不符: ' + latex('1/2(a + 2b) - 1/3(a - b)'));
+ok(latex('1/2ab + 2/3x^2') === '\\dfrac{1}{2}ab+\\dfrac{2}{3}x^{2}',
+    '多字母分数项的显示 LaTeX 不符: ' + latex('1/2ab + 2/3x^2'));
+ok(latex('-1/2(x + 4) + 3/4(x - 2)') === '-\\dfrac{1}{2}\\left(x+4\\right)+\\dfrac{3}{4}\\left(x-2\\right)',
+    '负分数乘括号的显示 LaTeX 不符: ' + latex('-1/2(x + 4) + 3/4(x - 2)'));
+ok(latex('1/') === null, '未完成输入 1/ 应回退为 null');
+ok(latex('') === null, '空输入应回退为 null');
+const latexAB = latex('a(b+2)-3(a^2-ab)');
+ok(typeof latexAB === 'string' && latexAB.indexOf('\\mathrm') === -1,
+    '多字母不应被 mathjs 当成单位渲染: ' + latexAB);
+ok(latex('2(x - 3) - 4(x + 1)') === '2\\left(x-3\\right)-4\\left(x+1\\right)',
+    '整数题的显示 LaTeX 不应改变: ' + latex('2(x - 3) - 4(x + 1)'));
+
 // ---------- 汇总 ----------
 console.log('=== 分数系数自检 ===');
 console.log('  断言通过 ' + pass + ' 条');

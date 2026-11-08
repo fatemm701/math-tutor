@@ -241,6 +241,115 @@
             });
             return max;
         }
+
+        // 表达式 → LaTeX 文本：分数统一输出 \dfrac，供练习页 KaTeX 渲染。
+        // 不使用 mathjs 的 toTex()，因为它会把 a/b 当成单位输出 \mathrm{a}。
+        function toLatexText(expr) {
+            if (typeof expr !== 'string' || expr.trim() === '') return null;
+            try {
+                return latexNode(math.parse(normalizeExpr(expr)));
+            } catch (err) {
+                return null;
+            }
+        }
+
+        function latexNode(node) {
+            if (node.isConstantNode) return String(node.value);
+            if (node.isSymbolNode) return node.name;
+            if (node.isParenthesisNode) {
+                return `\\left(${latexNode(node.content)}\\right)`;
+            }
+            if (node.isOperatorNode) {
+                if (node.args.length === 1) {
+                    if (node.op === '-') return `-${latexNode(node.args[0])}`;
+                    if (node.op === '+') return latexNode(node.args[0]);
+                }
+                if (node.args.length === 2) {
+                    const left = node.args[0];
+                    const right = node.args[1];
+                    if (node.op === '/') {
+                        let num = latexFractionPart(left);
+                        let den = latexFractionPart(right);
+                        let sign = '';
+                        if (num.startsWith('-')) {
+                            sign = '-';
+                            num = num.slice(1);
+                        }
+                        if (den.startsWith('-')) {
+                            sign = sign === '-' ? '' : '-';
+                            den = den.slice(1);
+                        }
+                        return `${sign}\\dfrac{${num}}{${den}}`;
+                    }
+                    if (node.op === '*') return latexProduct(node);
+                    if (node.op === '^') {
+                        return `${latexPowerBase(left)}^{${latexNode(right)}}`;
+                    }
+                    if (node.op === '+' || node.op === '-') {
+                        return `${latexNode(left)}${node.op}${latexNode(right)}`;
+                    }
+                }
+            }
+            throw new Error('表达式不支持');
+        }
+
+        function latexFractionPart(node) {
+            let current = node;
+            while (current.isParenthesisNode) current = current.content;
+            return latexNode(current);
+        }
+
+        function isUnaryMinusNode(node) {
+            return !!node && node.isOperatorNode && node.op === '-' && node.args.length === 1;
+        }
+
+        function isNegativeConstant(node) {
+            return isUnaryMinusNode(node) && node.args[0].isConstantNode;
+        }
+
+        function collectProductFactors(node, out) {
+            if (node.isOperatorNode && node.op === '*' && node.args.length === 2) {
+                collectProductFactors(node.args[0], out);
+                collectProductFactors(node.args[1], out);
+            } else {
+                out.push(node);
+            }
+        }
+
+        function latexPowerBase(node) {
+            if (node.isSymbolNode || node.isConstantNode || node.isParenthesisNode) {
+                return latexNode(node);
+            }
+            return `\\left(${latexNode(node)}\\right)`;
+        }
+
+        function latexProduct(node) {
+            const factors = [];
+            collectProductFactors(node, factors);
+            return factors.map((factor, index) => {
+                let text = latexFactor(factor);
+                if (index === 0) return text;
+                if (factor.isConstantNode || isNegativeConstant(factor)) {
+                    if (text.startsWith('-')) text = `\\left(${text}\\right)`;
+                    return `\\cdot ${text}`;
+                }
+                return text;
+            }).join('');
+        }
+
+        function latexFactor(node) {
+            if (node.isConstantNode || isNegativeConstant(node)) return latexNode(node);
+            const text = latexNode(node);
+            if (node.isParenthesisNode) return text;
+            if (node.isOperatorNode && node.op === '/' && node.args.length === 2) return text;
+            if (text.startsWith('-')) return `\\left(${text}\\right)`;
+            if (node.isOperatorNode && (node.op === '+' || node.op === '-')
+                && node.args.length === 2) {
+                return `\\left(${text}\\right)`;
+            }
+            return text;
+        }
+
         return {
             VAR_ORDER,
             rational: R,
@@ -253,7 +362,8 @@
             monomialBody,
             formatPoly,
             parseToPoly,
-            maxExponent
+            maxExponent,
+            toLatexText
         };
     }
 

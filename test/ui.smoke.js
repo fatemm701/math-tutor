@@ -302,7 +302,7 @@ async function bootFreshPage(cached) {
     mk('level-tabs');
     const question = mk('question-display');
     const tag = mk('q-tag');
-    mk('input-display');
+    const input = mk('input-display');
     const feedback = mk('feedback-display');
     mk('hint-display');
     const steps = mk('steps-display');
@@ -338,7 +338,7 @@ async function bootFreshPage(cached) {
 
     await fakeWindow.onload();
     await new Promise(r => setImmediate(r));
-    return { tabs, question, tag, feedback, steps, keys: freshKeys, click, type };
+    return { tabs, question, tag, input, feedback, steps, keys: freshKeys, click, type };
 }
 
 const activeLevelOf = (tabs) => {
@@ -366,6 +366,8 @@ const warmPage = await bootFreshPage({
 check(activeLevelOf(warmPage.tabs) === '3',
     '刚做过的题刷新后应接着做，实际 ' + activeLevelOf(warmPage.tabs));
 check(warmPage.tag.hidden === true, '整数缓存题不应显示「分数」标签');
+check(warmPage.question._tex === 'x - (3x - 2)',
+    '整数题不应被改成 LaTeX 括号形式，实际: ' + warmPage.question._tex);
 
 // 14. 分数题：标签、斜杠输入、判题、上报 tags
 const beforeFraction = apiCalls.length;
@@ -377,13 +379,17 @@ check(activeLevelOf(fractionPage.tabs) === '2',
     '分数缓存题应保持原难度，实际 ' + activeLevelOf(fractionPage.tabs));
 check(fractionPage.tag.hidden === false, '分数题应显示「分数」标签');
 check(fractionPage.tag.textContent === '分数', '标签文案应为「分数」，实际: ' + fractionPage.tag.textContent);
+check(String(fractionPage.question._tex || '').includes('\\dfrac{1}{2}'),
+    '分数题题目应渲染成上下分式，实际: ' + fractionPage.question._tex);
 fractionPage.type('x/2-1');
+check(fractionPage.input._tex === '\\dfrac{x}{2}-1',
+    '分数输入应实时渲染成上下分式，实际: ' + fractionPage.input._tex);
 fractionPage.click('submit');
 check(/正确/.test(fractionPage.feedback.textContent), '分数题答对应提示正确，实际: ' + fractionPage.feedback.textContent);
 const fracRows = fractionPage.steps.children;
 const fracLast = fracRows[fracRows.length - 1];
-check(String(cellTex(fracLast, 1) || '').replace(/\s+/g, '') === 'x/2-1',
-    '分数题最后一步应等于答案，实际: ' + cellTex(fracLast, 1));
+check(cellTex(fracLast, 1) === '\\dfrac{x}{2}-1',
+    '分数题最后一步应渲染成上下分式，实际: ' + cellTex(fracLast, 1));
 
 await new Promise(r => setImmediate(r));
 const fracPosts = apiCalls.slice(beforeFraction)
