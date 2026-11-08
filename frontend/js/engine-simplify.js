@@ -11,7 +11,9 @@
             parseToPoly,
             formatPoly,
             samePoly,
-            maxExponent
+            maxExponent,
+            monomialBody,
+            rational: R
         } = core;
         function rand(min, max, excludeZero = true) {
             let val;
@@ -29,11 +31,10 @@
         }
 
         function formatTerm(coef, variable) {
-            if (coef === 0) return '0';
-            if (variable === '') return `${coef}`;
-            if (coef === 1) return variable;
-            if (coef === -1) return `-${variable}`;
-            return `${coef}${variable}`;
+            const c = R.fromNumber(coef);
+            if (R.isZero(c)) return '0';
+            const body = monomialBody(c, variable);
+            return R.sign(c) < 0 ? `-${body}` : body;
         }
 
         // 拼接两项，自动合并符号：同号得正、异号得负
@@ -172,24 +173,22 @@
         }
 
         function itemBody(it) {              // 不含正负号
-            const v = varsToStr(it.vars);
-            const a = Math.abs(it.coef);
-            if (v === '') return `${a}`;
-            return a === 1 ? v : `${a}${v}`;
+            return monomialBody(it.coef, varsToStr(it.vars));
         }
 
         function renderSum(items) {
             if (items.length === 0) return '0';
             return items.map((it, i) => {
+                const negative = R.sign(it.coef) < 0;
+                const abs = R.abs(it.coef);
+                const v = varsToStr(it.vars);
                 let body = itemBody(it);
                 if (it.inner) {
-                    const v = varsToStr(it.vars);
-                    const a = Math.abs(it.coef);
-                    const pre = (a === 1 && v === '') ? '' : `${a}${v}`;
+                    const pre = (R.isInt(abs, 1) && v === '') ? '' : monomialBody(abs, v);
                     body = `${pre}(${renderSum(it.inner)})`;
                 }
-                if (i === 0) return it.coef < 0 ? `-${body}` : body;
-                return it.coef < 0 ? ` - ${body}` : ` + ${body}`;
+                if (i === 0) return negative ? `-${body}` : body;
+                return negative ? ` - ${body}` : ` + ${body}`;
             }).join('');
         }
 
@@ -197,7 +196,7 @@
         function mulItem(x, list) {
             if (list.length === 1) {
                 const y = list[0];
-                return { coef: x.coef * y.coef, vars: addVars(x.vars, y.vars), inner: y.inner };
+                return { coef: R.mul(x.coef, y.coef), vars: addVars(x.vars, y.vars), inner: y.inner };
             }
             if (list.some(it => it.inner)) throw new Error('不支持的括号相乘');
             return { coef: x.coef, vars: x.vars, inner: list };
@@ -208,13 +207,11 @@
                 // 括号里有加减法时，保留成"一个括号组"，后面才能按步展开
                 const inner = nodeToItems(node.content);
                 if (inner.length === 1 && !inner[0].inner) return inner;
-                return [{ coef: 1, vars: [0, 0, 0], inner }];
+                return [{ coef: R.one, vars: [0, 0, 0], inner }];
             }
 
             if (node.isConstantNode) {
-                const v = Number(node.value);
-                if (!Number.isInteger(v)) throw new Error('系数必须是整数');
-                return [{ coef: v, vars: [0, 0, 0], inner: null }];
+                return [{ coef: R.fromNumber(node.value), vars: [0, 0, 0], inner: null }];
             }
 
             if (node.isSymbolNode) {
@@ -222,14 +219,14 @@
                 if (idx < 0) throw new Error('不支持的字母');
                 const vars = [0, 0, 0];
                 vars[idx] = 1;
-                return [{ coef: 1, vars, inner: null }];
+                return [{ coef: R.one, vars, inner: null }];
             }
 
             if (node.isOperatorNode) {
                 if (node.args.length === 1) {
                     // 负号：把符号乘进括号里的每一项
                     return nodeToItems(node.args[0]).map(it => ({
-                        coef: -it.coef, vars: it.vars.slice(), inner: it.inner
+                        coef: R.neg(it.coef), vars: it.vars.slice(), inner: it.inner
                     }));
                 }
                 if (node.op === '+' || node.op === '-') {
@@ -237,8 +234,20 @@
                     const right = nodeToItems(node.args[1]);
                     if (node.op === '+') return left.concat(right);
                     return left.concat(right.map(it => ({
-                        coef: -it.coef, vars: it.vars.slice(), inner: it.inner
+                        coef: R.neg(it.coef), vars: it.vars.slice(), inner: it.inner
                     })));
+                }
+                if (node.op === '/') {
+                    const left = nodeToItems(node.args[0]);
+                    const right = nodeToItems(node.args[1]);
+                    if (right.length !== 1 || right[0].inner) throw new Error('不支持的除法');
+                    if (right[0].vars.some(v => v !== 0)) throw new Error('分母含字母暂不支持');
+                    if (R.isZero(right[0].coef)) throw new Error('分母不能为 0');
+                    return left.map(it => ({
+                        coef: R.div(it.coef, right[0].coef),
+                        vars: it.vars.slice(),
+                        inner: it.inner
+                    }));
                 }
                 if (node.op === '*') {
                     const a = nodeToItems(node.args[0]);
@@ -256,7 +265,7 @@
                     }
                     if (base[0].inner) throw new Error('不支持的括号乘方');
                     return [{
-                        coef: Math.pow(base[0].coef, exp),
+                        coef: R.pow(base[0].coef, exp),
                         vars: base[0].vars.map(v => v * exp),
                         inner: null
                     }];
@@ -272,13 +281,13 @@
             items.forEach(it => {
                 if (!it.inner) { out.push(it); return; }
                 const content = expandContent(it.inner);
-                const k = Math.abs(it.coef);
+                const k = R.abs(it.coef);
                 const hasVars = it.vars.some(e => e !== 0);
-                if (k === 1 && !hasVars) {
+                if (R.isInt(k, 1) && !hasVars) {
                     out.push({ coef: it.coef, vars: it.vars.slice(), inner: content });
                 } else {
                     content.forEach(sub => out.push({
-                        coef: it.coef * sub.coef,
+                        coef: R.mul(it.coef, sub.coef),
                         vars: addVars(it.vars, sub.vars),
                         inner: sub.inner
                     }));
@@ -293,17 +302,17 @@
             return items.map(it => {
                 if (!it.inner) return it;
                 const content = expandContent(it.inner);
-                const k = Math.abs(it.coef);
+                const k = R.abs(it.coef);
                 const hasVars = it.vars.some(e => e !== 0);
-                if (k === 1 && !hasVars) {
+                if (R.isInt(k, 1) && !hasVars) {
                     return { coef: it.coef, vars: it.vars.slice(), inner: content };
                 }
                 const scaled = content.map(sub => ({
-                    coef: sub.coef * k,
+                    coef: R.mul(sub.coef, k),
                     vars: addVars(it.vars, sub.vars),
                     inner: sub.inner
                 }));
-                return { coef: it.coef < 0 ? -1 : 1, vars: [0, 0, 0], inner: scaled };
+                return { coef: R.sign(it.coef) < 0 ? R.minusOne : R.one, vars: [0, 0, 0], inner: scaled };
             });
         }
 
@@ -314,14 +323,14 @@
                 if (it.inner) { out.push(it); return; }   // 还带括号的先不合并
                 const key = it.vars.join(',');
                 const found = index.get(key);
-                if (found) found.coef += it.coef;
+                if (found) found.coef = R.add(found.coef, it.coef);
                 else {
                     const copy = { coef: it.coef, vars: it.vars.slice(), inner: null };
                     index.set(key, copy);
                     out.push(copy);
                 }
             });
-            return out.filter(it => it.coef !== 0);
+            return out.filter(it => !R.isZero(it.coef));
         }
 
         function combineInside(items) {
@@ -335,7 +344,7 @@
             items.forEach(it => {
                 if (!it.inner) { out.push(it); return; }
                 flattenItems(it.inner).forEach(sub => out.push({
-                    coef: it.coef * sub.coef,
+                    coef: R.mul(it.coef, sub.coef),
                     vars: addVars(it.vars, sub.vars),
                     inner: null
                 }));
@@ -398,8 +407,8 @@
                 const walk = (list) => list.forEach(it => {
                     if (!it.inner) return;
                     if (it.inner.some(sub => sub.inner)) nested = true;
-                    if (it.coef < 0) negativeBracket = true;
-                    if (Math.abs(it.coef) > 1) numberTimes = true;
+                    if (R.sign(it.coef) < 0) negativeBracket = true;
+                    if (!R.isInt(R.abs(it.coef), 1)) numberTimes = true;
                     if (it.vars.some(e => e !== 0)) varTimes = true;
                     walk(it.inner);
                 });

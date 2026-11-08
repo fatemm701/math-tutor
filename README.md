@@ -46,13 +46,14 @@ frontend/
   practice.html        练习页结构（软键盘、题目/解析面板）
   css/practice.css     练习页样式
   js/
-    math-core.js       多项式解析、展开、格式化（纯计算）
+    math-core.js       多项式解析、展开、格式化；有理数系数（纯计算）
     engine-simplify.js 整式化简：出题、判题、分步解析、提示
     practice.js        渲染、键盘、缓存、上报
   teacher.html         教师看板
   vendor/              katex、mathjs 及字体（离线可用）
 test/
   engine.test.js       出题/判题引擎穷举验证
+  fraction.test.js     分数系数：有理数运算、解析、判等、步骤、判卷
   ui.smoke.js          练习页交互冒烟（自建最小 DOM 桩）
   auth.smoke.js        登录注册页冒烟
   teacher.smoke.js     看板冒烟
@@ -87,17 +88,20 @@ $env:TEACHER_INVITE='换成你自己的口令'; npm start
 npm test
 ```
 
-五个套件串行执行，任一失败即非 0 退出：
+六个套件串行执行，任一失败即非 0 退出：
 
 | 套件 | 覆盖内容 |
 |---|---|
 | `engine.test.js` | 直接加载 `math-core.js` + `engine-simplify.js`，出题/判题/解析穷举断言（约 17748 条） |
+| `fraction.test.js` | 分数系数：有理数规范化/四则/乘方、解析、格式化、判等、分步解析、判卷（72 条） |
 | `ui.smoke.js` | 加载 `practice.js`：渲染、提示、答对/错两次/看解析的解析展示、锁键盘、下一题 |
 | `auth.smoke.js` | 登录注册页：角色切换、字段可见性、提交字段名、跳转 |
 | `teacher.smoke.js` | 看板渲染与详情切换 |
 | `api.test.js` | 47 条接口断言（真实起服务 + 临时数据目录） |
 
 页面测试用最小 DOM 桩跑 Node，不需要浏览器；加载 `frontend/js/practice.js` 和 `frontend/vendor/math.js`，与浏览器实际一致。
+
+> 分数系数目前只完成计算层验证（`math-core.js` / `engine-simplify.js`），练习页还没有分数键盘和随机分数题模板；页面仍按整数题运行。
 
 ## 部署
 

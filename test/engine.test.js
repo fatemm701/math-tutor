@@ -17,7 +17,7 @@ let pass = 0;
 const fails = [];
 const ok = (cond, msg) => { if (cond) pass++; else if (fails.length < 20) fails.push(msg); else fails.length++; };
 const norm = (s) => String(s).replace(/\s+/g, '');
-const samePoly = (a, b) => a.size === b.size && [...a.entries()].every(([k, v]) => b.get(k) === v);
+const samePoly = (a, b) => E.samePoly(a, b);
 const answerOf = (question) => E.formatPoly(E.parseToPoly(question)).replace(/\s/g, '');
 // ---------- 0. 分层检查：计算模块不依赖浏览器 ----------
 const readText = (p) => fs.readFileSync(path.join(root, p), 'utf8');
