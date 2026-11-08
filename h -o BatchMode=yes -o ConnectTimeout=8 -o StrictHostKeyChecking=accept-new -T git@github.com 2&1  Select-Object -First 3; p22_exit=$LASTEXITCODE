@@ -1,0 +1,8 @@
+[35mbackend/server.js[m[36m:[m[32m15[m[36m:[m[1;31mapp.use[m(express.json({ limit: '64kb' }));
+[35mbackend/server.js[m[36m:[m[32m17[m[36m:[m[1;31mapp.use[m('/vendor', express.static(path.join(__dirname, '..', 'frontend', 'vendor'), {
+[35mbackend/server.js[m[36m:[m[32m21[m[36m:[m[1;31mapp.use[m(express.static(path.join(__dirname, '..', 'frontend')));
+[35mbackend/server.js[m[36m:[m[32m28[m[36m:[m[1;31mapp.use[m('/api/auth', require('./routes/auth'));
+[35mbackend/server.js[m[36m:[m[32m29[m[36m:[m[1;31mapp.use[m('/api/attempts', require('./routes/attempts'));
+[35mbackend/server.js[m[36m:[m[32m30[m[36m:[m[1;31mapp.use[m('/api/teacher', require('./routes/teacher'));
+[35mbackend/server.js[m[36m:[m[32m32[m[36m:[m[1;31mapp.use[m('/api', (req, res) => {
+[35mbackend/server.js[m[36m:[m[32m37[m[36m:[m[1;31mapp.use[m((err, req, res, next) => {

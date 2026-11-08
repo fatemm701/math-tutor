@@ -180,3 +180,22 @@ TRUST_PROXY=1       # 信任 NPM 的 X-Forwarded-For，登录失败限速按真�
 改 `.env` 后执行 `docker compose up -d`（不用 `--build`），否则容器还是旧环境变量。
 注意：`COOKIE_SECURE=1` 时若绕过 HTTPS 直接访问 `http://IP:3001`，会出现"登录成功但立刻掉登录"，属预期行为。
 
+### 源码仓库
+
+| 项 | 值 |
+|---|---|
+| 远端（私有） | `github.com/fatemm701/math_train`，分支 `main` |
+| 协议 | SSH，且**必须走 443**：本机 22 端口被网络屏蔽，`~/.ssh/config` 里已配 `Host github.com → HostName ssh.github.com / Port 443` |
+| 日常提交 | `git push`（首次 `git push -u origin main` 已建好 upstream） |
+
+服务器侧目前**不用** `git pull`：从这台机器直连 `github.com:443` 超时（DNS 正常，TCP 不通），
+所以发布仍是「本机打包 → `scp` → 服务器解包 → `docker compose up -d --build`」。
+
+若以后想在服务器上直接拉取，需要先满足两点，否则改了也没用：
+
+1. 让服务器能连上 GitHub（例如配 `https_proxy`，或给 `git` 设代理）；
+2. 在仓库 Settings → Deploy keys 里加服务器自己的公钥（只读、不加写权限即可），
+   然后 `git clone` 一次，之后用 `git pull && docker compose up -d --build` 更新。
+
+无论哪种方式，**`data/` 与 `.env` 都不进仓库**，更新代码不会动线上数据。
+
