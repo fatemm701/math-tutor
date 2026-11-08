@@ -96,6 +96,37 @@ ok(JSON.stringify(stepsOf('-x - (4(x + 2) - 2)')) === JSON.stringify([
     '合并同类项|-5x-6'
 ]), '嵌套题的解析步骤不符: ' + JSON.stringify(stepsOf('-x - (4(x + 2) - 2)')));
 
+// 嵌套 ±1 括号（L3 type1 模板）：内层括号要留到「去括号」那一步才拆，不能被提前摊平
+ok(JSON.stringify(stepsOf('2x + 3(6 + 2x^2 - (x + 4))')) === JSON.stringify([
+    '原式|2x+3(6+2x^2-(x+4))',
+    '乘进括号|2x+(18+6x^2-3(x+4))',
+    '去括号|2x+18+6x^2-3x-12',
+    '合并同类项|6x^2-x+6'
+]), '嵌套 ±1 括号的解析步骤不符: ' + JSON.stringify(stepsOf('2x + 3(6 + 2x^2 - (x + 4))')));
+
+ok(JSON.stringify(stepsOf('-x - 4(6x - 4 + 5x^2 - (-4x - 2))')) === JSON.stringify([
+    '原式|-x-4(6x-4+5x^2-(-4x-2))',
+    '乘进括号|-x-(24x-16+20x^2-4(-4x-2))',
+    '去括号|-x-24x+16-20x^2-16x-8',
+    '合并同类项|-20x^2-41x+8'
+]), '嵌套负括号的解析步骤不符: ' + JSON.stringify(stepsOf('-x - 4(6x - 4 + 5x^2 - (-4x - 2))')));
+
+// 字母乘括号：字母指数相加，括号内部先摊平
+ok(JSON.stringify(stepsOf('x(x + 1) - 2(x^2 - 3)')) === JSON.stringify([
+    '原式|x(x+1)-2(x^2-3)',
+    '乘进括号|(x^2+x)-(2x^2-6)',
+    '去括号|x^2+x-2x^2+6',
+    '合并同类项|-x^2+x+6'
+]), '字母乘括号的解析步骤不符: ' + JSON.stringify(stepsOf('x(x + 1) - 2(x^2 - 3)')));
+
+// 双字母：ab 与 a^2 各算一类，不能合并到一起
+ok(JSON.stringify(stepsOf('a(b + 2) - 3(a^2 - ab)')) === JSON.stringify([
+    '原式|a(b+2)-3(a^2-ab)',
+    '乘进括号|(ab+2a)-(3a^2-3ab)',
+    '去括号|ab+2a-3a^2+3ab',
+    '合并同类项|4ab-3a^2+2a'
+]), '双字母题的解析步骤不符: ' + JSON.stringify(stepsOf('a(b + 2) - 3(a^2 - ab)')));
+
 // ---------- 3. 判卷 ----------
 const judge = (student, question, expected) => {
     const r = E.evaluateAnswer(student, answerOf(question));
