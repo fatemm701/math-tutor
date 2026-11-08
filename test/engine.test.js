@@ -49,6 +49,14 @@ for (let lv = 1; lv <= 4; lv++) {
         ok(q.question.includes('('), '题面没有括号: ' + q.question);
         ok(q.question !== '3 - (x + 3)', 'L' + lv + ' 命中兜底题');
 
+        ok(Array.isArray(q.tags), 'tags 应为数组: ' + q.question);
+        ok(q.tags.every(t => t === 'fraction'), '出现未知标签: ' + q.question);
+        if (lv === 1) ok(!q.tags.includes('fraction'), 'L1 不应混入分数题: ' + q.question);
+        if (q.tags.includes('fraction')) {
+            ok(q.question.includes('/'), '分数题题面应含 /: ' + q.question);
+            ok(q.answer.includes('/'), '分数题答案应含 /: ' + q.question + ' => ' + q.answer);
+        }
+
         const ans = answerOf(q.question);
         ok(ans === q.answer, '答案不一致: ' + q.question + ' | ' + q.answer + ' vs ' + ans);
         ok(ans !== '0', '答案不能是 0: ' + q.question);
@@ -127,6 +135,28 @@ ok(JSON.stringify(stepsOf('a(b + 2) - 3(a^2 - ab)')) === JSON.stringify([
     '合并同类项|4ab-3a^2+2a'
 ]), '双字母题的解析步骤不符: ' + JSON.stringify(stepsOf('a(b + 2) - 3(a^2 - ab)')));
 
+// 分数系数：乘进括号后系数保留分数，答案/步骤统一用斜杠线性写法
+ok(JSON.stringify(stepsOf('1/2(x + 4) - 3')) === JSON.stringify([
+    '原式|1/2(x+4)-3',
+    '乘进括号|(x/2+2)-3',
+    '去括号|x/2+2-3',
+    '合并同类项|x/2-1'
+]), '分数题 1/2(x + 4) - 3 的解析步骤不符: ' + JSON.stringify(stepsOf('1/2(x + 4) - 3')));
+
+ok(JSON.stringify(stepsOf('(x + 4)/2 - (x - 1)/3')) === JSON.stringify([
+    '原式|(x+4)/2-(x-1)/3',
+    '乘进括号|(x/2+2)-(x/3-1/3)',
+    '去括号|x/2+2-x/3+1/3',
+    '合并同类项|x/6+7/3'
+]), '分数题 (x + 4)/2 - (x - 1)/3 的解析步骤不符: ' + JSON.stringify(stepsOf('(x + 4)/2 - (x - 1)/3')));
+
+ok(JSON.stringify(stepsOf('1/2(a + 2b) - 1/3(a - b)')) === JSON.stringify([
+    '原式|1/2(a+2b)-1/3(a-b)',
+    '乘进括号|(a/2+b)-(a/3-b/3)',
+    '去括号|a/2+b-a/3+b/3',
+    '合并同类项|4b/3+a/6'
+]), '分数题 1/2(a + 2b) - 1/3(a - b) 的解析步骤不符: ' + JSON.stringify(stepsOf('1/2(a + 2b) - 1/3(a - b)')));
+
 // ---------- 3. 判卷 ----------
 const judge = (student, question, expected) => {
     const r = E.evaluateAnswer(student, answerOf(question));
@@ -143,11 +173,16 @@ judge('6x - -10', '2(x - 3) - 4(x + 1)', 'error');                // 连续符�
 judge('x +', '2(x - 3) - 4(x + 1)', 'error');                     // 语法错
 judge('-x', '3 - (x + 3)', 'correct');
 judge('3ab - 2a + 5b', 'a(3b) - 2a + 5b', 'correct');
+judge('x/2 - 1', '1/2(x + 4) - 3', 'correct');
+judge('(x + 4)/2 - 3', '1/2(x + 4) - 3', 'partial');   // 未去括号
+judge('x/2 + 1', '1/2(x + 4) - 3', 'wrong');           // 常数算错
 
 // ---------- 4. 提示分类 ----------
 ok(E.hintsFor('3 - (x + 3)').some(h => /变号/.test(h)), 'L1 题应命中「变号」提示');
 ok(E.hintsFor('2(x - 3) - 4(x + 1)').some(h => /漏乘/.test(h)), 'L2 题应命中「漏乘」提示');
 ok(E.hintsFor('-x - (4(x + 2) - 2)').some(h => /套着括号/.test(h)), '嵌套题应命中「嵌套」提示');
+ok(E.hintsFor('1/2(x + 4) - 3').some(h => /漏乘/.test(h)), '分数题应命中「漏乘」提示');
+ok(E.hintsFor('3 - 1/2(x + 4)').some(h => /变号/.test(h)), '分数题应命中「变号」提示');
 ok(E.hintsFor('a(b + 2) - 3(a^2 - ab)').some(h => /a 和 b/.test(h)), '双字母题应命中「a/b」提示');
 ok(E.hintsFor('x^2 + 2x - 1').some(h => /x²/.test(h)), '含平方的题应命中「x 和 x²」提示');
 

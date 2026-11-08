@@ -35,7 +35,7 @@
         </div>
 
         <div class="display-board">
-            <div class="question-label" id="level-label">当前题目</div>
+            <div class="question-label" id="level-label">当前题目<span id="q-tag" class="tag tag-fraction" hidden>分数</span></div>
             <div id="question-display"></div>
             <div class="question-label" style="margin-top: 15px;">你的答案</div>
             <div id="input-display" style="color: var(--primary); min-height: 35px;"></div>
@@ -50,32 +50,31 @@
             <div class="key" data-val="8">8</div>
             <div class="key" data-val="9">9</div>
             <div class="key" data-val="+">+</div>
+            <div class="key" data-val="/">/</div>
 
             <!-- 第二排 -->
             <div class="key" data-val="4">4</div>
             <div class="key" data-val="5">5</div>
             <div class="key" data-val="6">6</div>
             <div class="key" data-val="-">-</div>
+            <div class="key" data-val="^2">²</div>
 
             <!-- 第三排 -->
             <div class="key" data-val="1">1</div>
             <div class="key" data-val="2">2</div>
             <div class="key" data-val="3">3</div>
             <div class="key" data-val="*">×</div>
+            <div class="key" data-val="^3">³</div>
 
             <!-- 第四排 -->
             <div class="key" data-val="0">0</div>
             <div class="key" data-val="x">x</div>
             <div class="key" data-val="(">(</div>
             <div class="key" data-val=")">)</div>
-
-            <!-- 第五排 -->
             <div class="key" data-val="a">a</div>
-            <div class="key" data-val="b">b</div>
-            <div class="key" data-val="^2">²</div>
-            <div class="key" data-val="^3">³</div>
 
-            <!-- 第六排：退格、提示、看答案、提交 -->
+            <!-- 第五排：字母 b、退格、提示、看解析、提交 -->
+            <div class="key" data-val="b">b</div>
             <div class="key action" data-action="backspace">退格</div>
             <div class="key action" data-action="hint">提示</div>
             <div class="key action" data-action="giveup" style="color: #EF4444;">看解析</div>

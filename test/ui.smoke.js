@@ -70,6 +70,7 @@ const tabEls = [1, 2, 3, 4].map(lv => {
 });
 
 const qEl = mk('question-display');
+const tagEl = mk('q-tag');
 const inEl = mk('input-display');
 const fbEl = mk('feedback-display');
 const hintsEl = mk('hint-display');
@@ -88,7 +89,7 @@ function key(name, opts) {
     keyboard.appendChild(el);
     keys[name] = el;
 }
-['7', '8', '9', '+', '4', '5', '6', '-', '1', '2', '3', '*', '0', 'x', '(', ')', 'a', 'b', '^2', '^3']
+['7', '8', '9', '+', '4', '5', '6', '-', '1', '2', '3', '*', '/', '0', 'x', '(', ')', 'a', 'b', '^2', '^3']
     .forEach(v => key('k_' + v, { val: v }));
 key('backspace', { action: 'backspace', classes: 'action' });
 key('hint', { action: 'hint', classes: 'action' });
@@ -168,6 +169,8 @@ try {
 
 // 1. 初始状态
 check(qEl._tex === FixedQuestion.question, '题目未按缓存渲染: ' + qEl._tex);
+check(tagEl.hidden === true, '整数题不应显示「分数」标签');
+check(!!keys['k_/'], '软键盘应有 / 键');
 check(hintsEl.hidden === true && stepsEl.hidden === true, '初始应隐藏提示与解析面板');
 check(keys.submit.textContent === '提交答案', '提交键文案不对: ' + keys.submit.textContent);
 
@@ -263,6 +266,10 @@ check(posts[1] && posts[1].result === 'wrong' && posts[1].revealed === true, '�
 check(posts[2] && posts[2].result === 'wrong' && posts[2].revealed === true, '看解析应记 revealed');
 check(posts[2] && posts[2].studentAnswer === '9x+9x', '看解析应带上学生原答案');
 check(posts.every(p => p && p.level === 2), '应带难度');
+check(posts.every(p => p && Array.isArray(p.tags)), '上报应带 tags 数组');
+check(posts[0] && posts[0].tags.length === 0, '整数缓存题的 tags 应为空数组');
+check(posts.every(p => p.question.includes('/') === (p.tags.includes('fraction'))),
+    'tags 应与分数题面一致');
 
 // 11. 顶部显示当前学生
 check(/小明/.test(whoEl.textContent), '顶部应显示学生姓名，实际: ' + whoEl.textContent);
@@ -294,17 +301,36 @@ async function bootFreshPage(cached) {
     });
     mk('level-tabs');
     const question = mk('question-display');
+    const tag = mk('q-tag');
     mk('input-display');
-    mk('feedback-display');
+    const feedback = mk('feedback-display');
     mk('hint-display');
-    mk('steps-display');
+    const steps = mk('steps-display');
     mk('who');
     mk('board-link');
     mk('logout');
+
     const keyboardEl = mk('keyboard');
-    const submitEl = mk('', 'div', 'key submit');
-    submitEl.dataset.action = 'submit';
-    keyboardEl.appendChild(submitEl);
+    const freshKeys = {};
+    function addKey(name, opts) {
+        const el = mk('', 'div', 'key' + (opts.classes ? ' ' + opts.classes : ''));
+        if (opts.val !== undefined) el.dataset.val = opts.val;
+        if (opts.action) el.dataset.action = opts.action;
+        keyboardEl.appendChild(el);
+        freshKeys[name] = el;
+    }
+    ['7', '8', '9', '+', '4', '5', '6', '-', '1', '2', '3', '*', '/', '0', 'x', '(', ')', 'a', 'b', '^2', '^3']
+        .forEach(v => addKey('k_' + v, { val: v }));
+    addKey('backspace', { action: 'backspace', classes: 'action' });
+    addKey('hint', { action: 'hint', classes: 'action' });
+    addKey('giveup', { action: 'giveup', classes: 'action' });
+    addKey('submit', { action: 'submit', classes: 'submit' });
+
+    const click = (name) => (keyboardEl.handlers.click || []).forEach(fn => fn({ target: freshKeys[name] }));
+    const type = (text) => [...text].forEach(ch => {
+        if (!freshKeys['k_' + ch]) throw new Error('键盘上没有 ' + ch);
+        click('k_' + ch);
+    });
 
     new Function('window', 'document', 'katex', 'localStorage', 'confirm', 'setTimeout', 'clearTimeout', 'math', 'fetch',
         practiceCode + '\n')(fakeWindow, document, katex, localStorage, () => true,
@@ -312,7 +338,7 @@ async function bootFreshPage(cached) {
 
     await fakeWindow.onload();
     await new Promise(r => setImmediate(r));
-    return { tabs, question };
+    return { tabs, question, tag, feedback, steps, keys: freshKeys, click, type };
 }
 
 const activeLevelOf = (tabs) => {
@@ -324,6 +350,7 @@ const freshPage = await bootFreshPage(null);
 check(activeLevelOf(freshPage.tabs) === '1',
     '新学生（无缓存）应默认「① 入门」，实际 ' + activeLevelOf(freshPage.tabs));
 check(String(freshPage.question._tex || '').length > 0, '默认难度的题应渲染出来');
+check(freshPage.tag.hidden === true, '入门题不应显示「分数」标签');
 
 const oldPage = await bootFreshPage({
     level: 2, question: '2(x - 3) - 4(x + 1)', answer: '-2x-10',
@@ -338,6 +365,34 @@ const warmPage = await bootFreshPage({
 });
 check(activeLevelOf(warmPage.tabs) === '3',
     '刚做过的题刷新后应接着做，实际 ' + activeLevelOf(warmPage.tabs));
+check(warmPage.tag.hidden === true, '整数缓存题不应显示「分数」标签');
+
+// 14. 分数题：标签、斜杠输入、判题、上报 tags
+const beforeFraction = apiCalls.length;
+const fractionPage = await bootFreshPage({
+    level: 2, question: '1/2(x + 4) - 3', answer: 'x/2-1',
+    tags: ['fraction'], startedAt: Date.now() - 60 * 1000, clientId: 'c_frac'
+});
+check(activeLevelOf(fractionPage.tabs) === '2',
+    '分数缓存题应保持原难度，实际 ' + activeLevelOf(fractionPage.tabs));
+check(fractionPage.tag.hidden === false, '分数题应显示「分数」标签');
+check(fractionPage.tag.textContent === '分数', '标签文案应为「分数」，实际: ' + fractionPage.tag.textContent);
+fractionPage.type('x/2-1');
+fractionPage.click('submit');
+check(/正确/.test(fractionPage.feedback.textContent), '分数题答对应提示正确，实际: ' + fractionPage.feedback.textContent);
+const fracRows = fractionPage.steps.children;
+const fracLast = fracRows[fracRows.length - 1];
+check(String(cellTex(fracLast, 1) || '').replace(/\s+/g, '') === 'x/2-1',
+    '分数题最后一步应等于答案，实际: ' + cellTex(fracLast, 1));
+
+await new Promise(r => setImmediate(r));
+const fracPosts = apiCalls.slice(beforeFraction)
+    .filter(c => c.url === '/api/attempts')
+    .map(c => { try { return JSON.parse(c.opts.body); } catch (e) { return null; } });
+check(fracPosts.length === 1, '分数题应上报 1 次，实际 ' + fracPosts.length);
+check(fracPosts[0] && fracPosts[0].level === 2, '分数题应带难度');
+check(fracPosts[0] && Array.isArray(fracPosts[0].tags) && fracPosts[0].tags.includes('fraction'),
+    '分数题上报应带 fraction 标签');
 
 katex.render = normalKatexRender;
 

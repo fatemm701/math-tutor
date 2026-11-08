@@ -69,6 +69,7 @@
             const hintsEl = document.getElementById("hint-display");
             const stepsEl = document.getElementById("steps-display");
             const levelTabs = document.getElementById("level-tabs");
+            const tagEl = document.getElementById("q-tag");
             const submitKey = document.querySelector(".key.submit");
 
             // ---------- 账号 ----------
@@ -115,6 +116,7 @@
                 const payload = {
                     clientId: currentQ.clientId,
                     level: currentQ.level,
+                    tags: Array.isArray(currentQ.tags) ? currentQ.tags : [],
                     question: currentQ.question,
                     answer: currentQ.answer,
                     studentAnswer: studentAnswer || '',
@@ -141,6 +143,15 @@
             function isValidQuestion(q) {
                 return !!q && typeof q.question === 'string' && typeof q.answer === 'string'
                     && LEVELS.includes(q.level);
+            }
+
+            // 分数题徽标：旧缓存没有 tags，按整数题处理
+            function renderTag() {
+                if (!tagEl) return;
+                const isFraction = !!currentQ && Array.isArray(currentQ.tags)
+                    && currentQ.tags.includes('fraction');
+                tagEl.hidden = !isFraction;
+                tagEl.textContent = isFraction ? '分数' : '';
             }
 
             // 加载题目：默认优先读取本地存货，刷新页面不丢当前题
@@ -173,6 +184,13 @@
                     currentQ.clientId = makeClientId();
                     cacheQuestion();
                 }
+
+                // 旧缓存没有 tags；生成器可能返回 undefined，这里统一成数组
+                currentQ.tags = Array.isArray(currentQ.tags)
+                    ? currentQ.tags.filter(t => typeof t === 'string')
+                    : [];
+                cacheQuestion();
+                renderTag();
 
                 // 高亮当前难度
                 document.querySelectorAll('.level-tab').forEach(tab => {

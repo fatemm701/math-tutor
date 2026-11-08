@@ -6,10 +6,17 @@ const auth = require('../auth');
 const router = express.Router();
 
 const RESULTS = ['correct', 'wrong', 'partial', 'error'];
+const TAGS = ['fraction'];
 const MAX_MS = 6 * 60 * 60 * 1000;
 
 function text(value, max) {
     return typeof value === 'string' ? value.slice(0, max) : '';
+}
+
+// 标签只接受白名单，旧客户端不带 tags 时按整数题处理
+function normalizeTags(value) {
+    if (!Array.isArray(value)) return [];
+    return [...new Set(value.filter(tag => TAGS.includes(tag)))].slice(0, 5);
 }
 
 router.post('/', auth.requireLogin, (req, res) => {
@@ -39,6 +46,7 @@ router.post('/', auth.requireLogin, (req, res) => {
         userId: req.user.id,
         clientId,
         level,
+        tags: normalizeTags(body.tags),
         question,
         answer: text(body.answer, 200).trim(),
         studentAnswer: text(body.studentAnswer, 300).trim(),

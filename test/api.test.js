@@ -103,15 +103,17 @@ function listen(port) {
     // 8. 上报三题：独立做对 / 用提示做对 / 看解析
     const q = '2(x - 3) - 4(x + 1)';
     const a = '-2x - 10';
-    r = await student('POST', '/api/attempts', { clientId: 'c1', level: 2, question: q, answer: a, studentAnswer: a, result: 'correct', usedHint: false, revealed: false, ms: 12000 });
+    const qf = '1/2(x + 4) - 3';
+    const af = 'x/2 - 1';
+    r = await student('POST', '/api/attempts', { clientId: 'c1', level: 2, question: qf, answer: af, studentAnswer: af, result: 'correct', usedHint: false, revealed: false, tags: ['fraction'], ms: 12000 });
     ok(r.status === 200, '上报失败: ' + JSON.stringify(r.body));
-    r = await student('POST', '/api/attempts', { clientId: 'c2', level: 2, question: q, answer: a, studentAnswer: a, result: 'correct', usedHint: true, revealed: false, ms: 30000 });
+    r = await student('POST', '/api/attempts', { clientId: 'c2', level: 2, question: qf, answer: af, studentAnswer: af, result: 'correct', usedHint: true, revealed: false, tags: ['fraction', 'bogus', 'fraction'], ms: 30000 });
     ok(r.status === 200, '上报失败（用提示）: ' + JSON.stringify(r.body));
     r = await student('POST', '/api/attempts', { clientId: 'c3', level: 3, question: q, answer: a, studentAnswer: '2x - 6', result: 'wrong', usedHint: false, revealed: true, ms: 45000 });
     ok(r.status === 200, '上报失败（看解析）: ' + JSON.stringify(r.body));
 
     // 9. 同一道题重复上报只记一次
-    r = await student('POST', '/api/attempts', { clientId: 'c1', level: 2, question: q, answer: a, studentAnswer: a, result: 'correct' });
+    r = await student('POST', '/api/attempts', { clientId: 'c1', level: 2, question: qf, answer: af, studentAnswer: af, result: 'correct', tags: ['fraction'] });
     ok(r.status === 200 && r.body.data.duplicate === true, '重复上报应去重: ' + JSON.stringify(r.body));
     r = await student('GET', '/api/attempts/mine');
     ok(r.body.data.attempts.length === 3, '学生自己应看到 3 条，实际 ' + r.body.data.attempts.length);
@@ -133,12 +135,25 @@ function listen(port) {
     ok(st.scored === 1 && st.accuracy === 100, '计入正确率的应只有 1 题且 100%，实际 scored=' + st.scored + ' acc=' + st.accuracy);
     ok(st.avgMs === 29000, '平均用时应为 (12000+30000+45000)/3=29000，实际 ' + st.avgMs);
     ok(st.byLevel.length === 4, '应返回 4 个难度');
+    ok(st.fraction && st.fraction.total === 2, '分数题应为 2 条，实际 ' + JSON.stringify(st.fraction));
+    ok(st.fraction && st.fraction.correct === 1 && st.fraction.hinted === 1,
+        '分数题应 1 条独立做对 + 1 条用提示，实际 ' + JSON.stringify(st.fraction));
+    ok(st.fraction && st.fraction.scored === 1 && st.fraction.accuracy === 100,
+        '分数题正确率口径不符，实际 ' + JSON.stringify(st.fraction));
+    ok(st.fraction && st.fraction.avgMs === 21000,
+        '分数题平均用时应为 (12000+30000)/2=21000，实际 ' + JSON.stringify(st.fraction));
 
     // 12. 老师看明细
     const studentId = r.body.data.students[0].user.id;
     r = await teacher('GET', '/api/teacher/attempts?studentId=' + studentId + '&limit=10');
     ok(r.status === 200 && r.body.data.attempts.length === 3, '明细应为 3 条');
     ok(r.body.data.attempts[0].createdAt >= r.body.data.attempts[1].createdAt, '明细应按时间倒序');
+    const c2Attempt = r.body.data.attempts.find(x => x.clientId === 'c2');
+    ok(c2Attempt && Array.isArray(c2Attempt.tags) && c2Attempt.tags.length === 1 && c2Attempt.tags[0] === 'fraction',
+        'tags 应去重并过滤未知标签，实际 ' + JSON.stringify(c2Attempt && c2Attempt.tags));
+    const c3Attempt = r.body.data.attempts.find(x => x.clientId === 'c3');
+    ok(c3Attempt && Array.isArray(c3Attempt.tags) && c3Attempt.tags.length === 0,
+        '未传 tags 的旧客户端应存空数组');
     r = await teacher('GET', '/api/teacher/attempts?studentId=u_not_exist');
     ok(r.status === 404, '不存在的学生应 404，实际 ' + r.status);
 

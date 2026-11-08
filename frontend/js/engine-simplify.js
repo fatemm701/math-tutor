@@ -30,11 +30,27 @@
             return val;
         }
 
+        // 分数题混入比例：L1 保持整数入门，L2/L3/L4 逐档增加
+        const FRACTION_RATE = { 1: 0, 2: 0.25, 3: 0.4, 4: 0.5 };
+        // 分母限制在 2/3/4/6，分子取 1/3/5，避免过于繁琐的分数运算
+        const FRACTION_COEFS = [
+            R.from(1, 2), R.from(-1, 2),
+            R.from(1, 3), R.from(-1, 3),
+            R.from(2, 3), R.from(-2, 3),
+            R.from(1, 4), R.from(-1, 4),
+            R.from(3, 4), R.from(-3, 4),
+            R.from(1, 6), R.from(-1, 6),
+            R.from(5, 6), R.from(-5, 6)
+        ];
+
+        function formatTermR(coef, variable) {
+            if (R.isZero(coef)) return '0';
+            const body = monomialBody(coef, variable);
+            return R.sign(coef) < 0 ? `-${body}` : body;
+        }
+
         function formatTerm(coef, variable) {
-            const c = R.fromNumber(coef);
-            if (R.isZero(c)) return '0';
-            const body = monomialBody(c, variable);
-            return R.sign(c) < 0 ? `-${body}` : body;
+            return formatTermR(R.fromNumber(coef), variable);
         }
 
         // 拼接两项，自动合并符号：同号得正、异号得负
@@ -56,6 +72,61 @@
                 if (idx === 0) return term;
                 return term.startsWith('-') ? `${acc} - ${term.slice(1)}` : `${acc} + ${term}`;
             }, "");
+        }
+
+        function pickFraction() {
+            return FRACTION_COEFS[Math.floor(Math.random() * FRACTION_COEFS.length)];
+        }
+
+        // 分数乘数乘括号：1/2(x + 4)、-1/3(a - b)
+        function fracBracket(coef, inner) {
+            return `${formatTermR(coef, '')}(${inner})`;
+        }
+
+        // 括号里的「变量 + 常数」：x + 4、x - 3
+        function plusConst(base, c) {
+            return c < 0 ? `${base} - ${Math.abs(c)}` : `${base} + ${c}`;
+        }
+
+        function buildFractionTemplate(level) {
+            if (level <= 2) {
+                const q = pickFraction();
+                const c = rand(-6, 6);
+                const d = rand(-9, 9);
+                const inner = plusConst('x', c);
+                const type = rand(1, 4);
+                // q(x + c) + d 或 d ± q(x + c)
+                if (type <= 2) return joinSigned(fracBracket(q, inner), '+', String(d));
+                return joinSigned(String(d), type === 3 ? '+' : '-', fracBracket(q, inner));
+            }
+            if (level === 3) {
+                const q1 = pickFraction();
+                const q2 = pickFraction();
+                const c1 = rand(-6, 6);
+                const c2 = rand(-6, 6);
+                const type = rand(1, 3);
+                if (type === 1) {
+                    return joinSigned(fracBracket(q1, plusConst('x', c1)), '-', fracBracket(q2, plusConst('x', c2)));
+                }
+                if (type === 2) {
+                    return joinSigned(fracBracket(q1, plusConst('x^2', c1)), '-', fracBracket(q2, plusConst('x', c2)));
+                }
+                const d = rand(-9, 9);
+                return joinSigned(joinSigned(fracBracket(q1, plusConst('x', c1)), '+', formatTermR(q2, 'x')), '+', String(d));
+            }
+            const q1 = pickFraction();
+            const q2 = pickFraction();
+            const c = rand(-4, 4);
+            const type = rand(1, 3);
+            if (type === 1) {
+                return joinSigned(fracBracket(q1, 'a + 2b'), '-', fracBracket(q2, plusConst('a - b', c)));
+            }
+            if (type === 2) {
+                return joinSigned(fracBracket(q1, plusConst('a^2 + b', c)), '-', fracBracket(q2, 'ab - a'));
+            }
+            // 嵌套：q1(a + 2b - q2(a - b))
+            const inner = joinSigned('a + 2b', '-', fracBracket(q2, 'a - b'));
+            return fracBracket(q1, inner);
         }
 
         function buildTemplate(level) {
@@ -108,9 +179,17 @@
             }
         }
 
-        function generateQuestion(level = 1) {
+        function generateQuestion(level = 1, options = {}) {
+            const lv = [1, 2, 3, 4].includes(Number(level)) ? Number(level) : 1;
+            const kind = options && options.kind;
+            const useFraction = kind === 'fraction'
+                || (kind !== 'integer' && Math.random() < (FRACTION_RATE[lv] || 0));
+            const fallback = useFraction
+                ? { level: lv, question: '1/2(x + 4) - 3', answer: 'x/2-1', tags: ['fraction'] }
+                : { level: lv, question: '3 - (x + 3)', answer: '-x', tags: [] };
+
             for (let i = 0; i < 500; i++) {
-                const expr = buildTemplate(level);
+                const expr = useFraction ? buildFractionTemplate(lv) : buildTemplate(lv);
                 // 题面不许出现连续符号（+ -、- - 之类）：学生看着别扭，也容易跟着抄错
                 if (/[+\-][+\-]/.test(expr.replace(/\s+/g, ''))) continue;
                 if (!expr.includes('(')) continue;
@@ -124,10 +203,12 @@
                 if (ansStr === '0' || normalizeExpr(expr) === ansStr) continue;
                 if (poly.size < 2 || poly.size > 6) continue;
                 if (maxExponent(poly) > 3) continue;
+                // 分数题必须有分数答案，避免「分数」标签配一个整数答案
+                if (useFraction && !ansStr.includes('/')) continue;
 
-                return { level, question: expr, answer: ansStr };
+                return { level: lv, question: expr, answer: ansStr, tags: useFraction ? ['fraction'] : [] };
             }
-            return { level, question: '3 - (x + 3)', answer: '-x' };
+            return fallback;
         }
 
         function evaluateAnswer(studentAns, standardAns) {

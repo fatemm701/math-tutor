@@ -19,8 +19,8 @@ poly-drill/
 │  └─ vendor/            # 本地 KaTeX + mathjs（离线可用，不依赖 CDN）
 ├─ test/
 │  ├─ engine.test.js     # 直接加载 math-core.js + engine-simplify.js
-│  ├─ fraction.test.js   # 分数系数：有理数运算、解析、判等、步骤、判卷
-│  ├─ ui.smoke.js        # 交互冒烟（软键盘、提交、提示、看解析、默认难度）
+│  ├─ fraction.test.js   # 分数系数：有理数运算、解析、判等、步骤、判卷、随机分数题
+│  ├─ ui.smoke.js        # 交互冒烟（软键盘、分数标签/斜杠输入、提交、提示、看解析）
 │  ├─ teacher.smoke.js   # 看板冒烟
 │  └─ api.test.js        # 接口测试（真实起服务、临时 DATA_DIR）
 ├─ data/

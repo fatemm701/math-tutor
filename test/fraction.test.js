@@ -98,6 +98,10 @@ const checkSteps = (question, expectedAnswer) => {
 checkSteps('1/2(x + 4) - 1/3(x - 3)', 'x/6 + 3');
 checkSteps('(x+1)/2 - (x-1)/3', 'x/6 + 5/6');
 checkSteps('2/3x + 1/2x', '7x/6');
+checkSteps('1/2(x + 4) - 3', 'x/2 - 1');
+checkSteps('(x + 4)/2 - (x - 1)/3', 'x/6 + 7/3');
+checkSteps('1/2(a + 2b) - 1/3(a - b)', '4b/3 + a/6');
+checkSteps('1/2(x^2 + 4) - 2/3(x - 3)', 'x^2/2 - 2x/3 + 4');
 
 const fractionHints = E.hintsFor('1/2(x + 4) - 1/3(x - 3)');
 ok(fractionHints.some(h => /漏乘/.test(h)), '分数乘括号应命中「漏乘」提示');
@@ -109,6 +113,45 @@ ok(fractionHints.some(h => /变号/.test(h)), '负分数组应命中「变号」
     ok(!/\d+\.\d+/.test(text), '答案不应出现小数: ' + text);
     ok(!/NaN|\[object Object\]/.test(text), '答案不应出现坏值: ' + text);
 });
+
+// ---------- 6. 随机分数题生成 ----------
+for (let lv = 1; lv <= 4; lv++) {
+    for (let i = 0; i < 50; i++) {
+        const q = E.generateQuestion(lv, { kind: 'fraction' });
+        ok(q.level === lv, '强制分数题难度不符: ' + q.question);
+        ok(Array.isArray(q.tags) && q.tags.includes('fraction'), '强制分数题缺标签: ' + q.question);
+        ok(q.question.includes('('), '分数题题面缺括号: ' + q.question);
+        ok(q.answer.includes('/'), '分数题答案应含 /: ' + q.question + ' => ' + q.answer);
+        ok(norm(answerOf(q.question)) === norm(q.answer), '分数题答案不一致: ' + q.question);
+
+        let poly = null;
+        try { poly = core.parseToPoly(q.answer); } catch (e) { poly = null; }
+        ok(!!poly, '分数题答案无法解析: ' + q.answer);
+        if (poly) {
+            ok(poly.size >= 2 && poly.size <= 6, '分数题答案项数异常: ' + q.question);
+            ok(core.maxExponent(poly) <= 3, '分数题次数过高: ' + q.question);
+        }
+
+        const steps = E.buildSteps(q.question, q.answer);
+        ok(Array.isArray(steps) && steps.length >= 2, '分数题步数不足: ' + q.question);
+        ok(norm(steps[steps.length - 1].expr) === norm(q.answer), '分数题最后一步不是答案: ' + q.question);
+        const ansPoly = core.parseToPoly(q.answer);
+        steps.forEach((step) => {
+            let stepPoly = null;
+            try { stepPoly = core.parseToPoly(step.expr); } catch (e) { stepPoly = null; }
+            ok(!!stepPoly && core.samePoly(stepPoly, ansPoly), '分数题步骤不等价: ' + step.expr);
+        });
+
+        const hints = E.hintsFor(q.question);
+        ok(Array.isArray(hints) && hints.length > 0, '分数题缺少提示: ' + q.question);
+        ok(!/\d+\.\d+/.test(q.answer) && !/NaN|\[object Object\]/.test(q.answer),
+            '分数题答案出现小数/坏值: ' + q.answer);
+    }
+}
+
+const integerOnly = E.generateQuestion(2, { kind: 'integer' });
+ok(Array.isArray(integerOnly.tags) && integerOnly.tags.length === 0, 'integer 模式不应带标签');
+ok(!integerOnly.answer.includes('/'), 'integer 模式答案不应含分数: ' + integerOnly.answer);
 
 // ---------- 汇总 ----------
 console.log('=== 分数系数自检 ===');

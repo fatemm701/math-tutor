@@ -201,6 +201,7 @@
         .tag-wrong { background: #FEF2F2; color: #B91C1C; }
         .tag-hinted { background: #FFFBEB; color: #B45309; }
         .tag-revealed { background: #EEF2FF; color: #4338CA; }
+        .tag-fraction { background: #F5F3FF; color: #6D28D9; margin-left: 6px; }
 
         .empty {
             margin: 0;
@@ -374,6 +375,7 @@
                             <th class="num lv-head">② 基础</th>
                             <th class="num lv-head">③ 进阶</th>
                             <th class="num lv-head">④ 挑战</th>
+                            <th class="num">分数题</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -519,7 +521,8 @@
                 { k: '独立做对', v: sum.correct + ' 题' },
                 { k: '平均用时', v: sum.total ? fmtMs(avgMs) : '—' },
                 { k: '用过提示', v: sum.hinted + ' 题' },
-                { k: '看解析', v: sum.revealed + ' 题' }
+                { k: '看解析', v: sum.revealed + ' 题' },
+                { k: '分数题（正确/总数）', v: sum.fraction.total ? sum.fraction.correct + '/' + sum.fraction.total : '—' }
             ];
             items.forEach(item => {
                 const box = document.createElement('div');
@@ -540,9 +543,13 @@
             const body = $('students-body');
             body.innerHTML = '';
 
-            const sum = { total: 0, correct: 0, wrong: 0, hinted: 0, revealed: 0, scored: 0, ms: 0 };
+            const sum = {
+                total: 0, correct: 0, wrong: 0, hinted: 0, revealed: 0, scored: 0, ms: 0,
+                fraction: { total: 0, correct: 0 }
+            };
             students.forEach(item => {
                 const st = item.stats;
+                const stFrac = st.fraction || {};
                 sum.total += st.total;
                 sum.correct += st.correct;
                 sum.wrong += st.wrong;
@@ -550,6 +557,8 @@
                 sum.revealed += st.revealed;
                 sum.scored += st.scored;
                 sum.ms += (st.avgMs || 0) * st.total;
+                sum.fraction.total += stFrac.total || 0;
+                sum.fraction.correct += stFrac.correct || 0;
 
                 const tr = document.createElement('tr');
                 tr.className = 'clickable';
@@ -574,6 +583,12 @@
                         cell.title = LEVEL_LABEL[row.level] + '：还没做过';
                     }
                 });
+
+                const frac = st.fraction || {};
+                const fracCell = td(tr, frac.total ? frac.correct + '/' + frac.total : '—', 'num');
+                fracCell.title = frac.total
+                    ? '分数题：正确率 ' + fmtPct(frac.accuracy) + '，平均 ' + fmtMs(frac.avgMs)
+                    : '分数题：还没做过';
 
                 const opCell = td(tr, '', 'num');
                 const btn = document.createElement('button');
@@ -607,7 +622,13 @@
             list.forEach(a => {
                 const tr = document.createElement('tr');
                 td(tr, fmtTime(a.createdAt), 'num');
-                td(tr, LEVEL_LABEL[a.level] || String(a.level));
+                const levelCell = td(tr, LEVEL_LABEL[a.level] || String(a.level));
+                if (Array.isArray(a.tags) && a.tags.includes('fraction')) {
+                    const ftag = document.createElement('span');
+                    ftag.className = 'tag tag-fraction';
+                    ftag.textContent = '分数';
+                    levelCell.appendChild(ftag);
+                }
                 tdMath(tr, a.question);
                 tdMath(tr, a.studentAnswer);
                 tdMath(tr, a.answer);

@@ -23,9 +23,20 @@ function summarize(list) {
         accuracy: null,
         avgMs: 0,
         lastAt: null,
+        fraction: {
+            total: 0,
+            correct: 0,
+            wrong: 0,
+            hinted: 0,
+            revealed: 0,
+            scored: 0,
+            accuracy: null,
+            avgMs: 0
+        },
         byLevel: [1, 2, 3, 4].map(level => ({ level, total: 0, correct: 0, avgMs: 0 }))
     };
     let totalMs = 0;
+    let fractionMs = 0;
     const levelMs = { 1: 0, 2: 0, 3: 0, 4: 0 };
 
     list.forEach(a => {
@@ -33,6 +44,13 @@ function summarize(list) {
         stats.total++;
         stats[bucket]++;
         totalMs += a.ms || 0;
+
+        // 分数题单列口径，计分方式与总表一致
+        if (Array.isArray(a.tags) && a.tags.includes('fraction')) {
+            stats.fraction.total++;
+            stats.fraction[bucket]++;
+            fractionMs += a.ms || 0;
+        }
 
         const row = stats.byLevel.find(r => r.level === a.level);
         if (row) {
@@ -46,6 +64,11 @@ function summarize(list) {
     stats.scored = stats.correct + stats.wrong;
     stats.accuracy = stats.scored ? Math.round((stats.correct / stats.scored) * 1000) / 10 : null;
     stats.avgMs = stats.total ? Math.round(totalMs / stats.total) : 0;
+    stats.fraction.scored = stats.fraction.correct + stats.fraction.wrong;
+    stats.fraction.accuracy = stats.fraction.scored
+        ? Math.round((stats.fraction.correct / stats.fraction.scored) * 1000) / 10
+        : null;
+    stats.fraction.avgMs = stats.fraction.total ? Math.round(fractionMs / stats.fraction.total) : 0;
     stats.byLevel.forEach(row => {
         row.avgMs = row.total ? Math.round(levelMs[row.level] / row.total) : 0;
         row.accuracy = row.total ? Math.round((row.correct / row.total) * 1000) / 10 : null;

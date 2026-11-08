@@ -64,6 +64,7 @@ const studentA = {
     stats: {
         total: 10, correct: 6, wrong: 3, hinted: 1, revealed: 0, scored: 9,
         accuracy: 66.7, avgMs: 15000, lastAt: now,
+        fraction: { total: 4, correct: 2, wrong: 1, hinted: 1, revealed: 0, scored: 3, accuracy: 66.7, avgMs: 12000 },
         byLevel: [
             { level: 1, total: 4, correct: 3, avgMs: 9000, accuracy: 75 },
             { level: 2, total: 6, correct: 3, avgMs: 19000, accuracy: 50 },
@@ -77,14 +78,16 @@ const studentB = {
     user: { id: 'u_b', name: '小红', role: 'student', createdAt: now - 1000 },
     stats: {
         total: 0, correct: 0, wrong: 0, hinted: 0, revealed: 0, scored: 0,
-        accuracy: null, avgMs: 0, lastAt: null, byLevel: zeroLevels
+        accuracy: null, avgMs: 0, lastAt: null,
+        fraction: { total: 0, correct: 0, wrong: 0, hinted: 0, revealed: 0, scored: 0, accuracy: null, avgMs: 0 },
+        byLevel: zeroLevels
     }
 };
 
 const attemptsPayload = [
     {
-        id: 'a1', level: 2, question: '2(x - 3) - 4(x + 1)', answer: '-2x-10', studentAnswer: '-2x-10',
-        result: 'correct', usedHint: false, revealed: false, ms: 8000, createdAt: now - 1000
+        id: 'a1', level: 2, question: '1/2(x + 4) - 3', answer: 'x/2-1', studentAnswer: 'x/2-1',
+        result: 'correct', usedHint: false, revealed: false, tags: ['fraction'], ms: 8000, createdAt: now - 1000
     },
     {
         id: 'a2', level: 3, question: '-3(4x^2 + 4) + x', answer: 'x-12x^2-12', studentAnswer: '3x',
@@ -101,7 +104,9 @@ const selfPayload = {
     user: { id: 'u_t', name: '王老师', role: 'teacher' },
     stats: {
         total: 8, correct: 5, wrong: 2, hinted: 1, revealed: 0, scored: 7,
-        accuracy: 71.4, avgMs: 12000, lastAt: now, byLevel: zeroLevels
+        accuracy: 71.4, avgMs: 12000, lastAt: now,
+        fraction: { total: 0, correct: 0, wrong: 0, hinted: 0, revealed: 0, scored: 0, accuracy: null, avgMs: 0 },
+        byLevel: zeroLevels
     }
 };
 
@@ -171,7 +176,7 @@ const text = (el) => (el ? String(el.textContent) : null);
     check(/老师/.test(who) && /TZDGJG/.test(who), '顶部应显示老师姓名和邀请码，实际: ' + who);
 
     const cards = cells(t.dom.byId['summary']);
-    check(cards.length === 7, '汇总卡片应有 7 张，实际 ' + cards.length);
+    check(cards.length === 8, '汇总卡片应有 8 张，实际 ' + cards.length);
     const pairs = cards.map(c => text(cells(c)[0]) + '=' + text(cells(c)[1]));
     check(pairs[0] === '学生=2 人', '学生数不对: ' + pairs[0]);
     check(pairs[1] === '总记录=10 条', '总记录不对: ' + pairs[1]);
@@ -180,6 +185,7 @@ const text = (el) => (el ? String(el.textContent) : null);
     check(pairs[4] === '平均用时=15 秒', '平均用时不对: ' + pairs[4]);
     check(pairs[5] === '用过提示=1 题', '提示数不对: ' + pairs[5]);
     check(pairs[6] === '看解析=0 题', '看解析数不对: ' + pairs[6]);
+    check(pairs[7] === '分数题（正确/总数）=2/4', '分数题汇总不对: ' + pairs[7]);
 
     // ---------- 2. 学生列表 ----------
     const rows = cells(t.dom.byId['students-body']);
@@ -198,14 +204,18 @@ const text = (el) => (el ? String(el.textContent) : null);
     check(text(r1[9]) === '3/6', '② 基础列不对: ' + text(r1[9]));
     check(text(r1[10]) === '—' && text(r1[11]) === '—', '没做过的难度应显示 —');
     check(/正确率 75%/.test(r1[8].title), '分难度悬停提示不对: ' + r1[8].title);
-    check(text(cells(r1[12])[0]) === '明细', '应有明细按钮');
+    check(text(r1[12]) === '2/4', '分数题列不对: ' + text(r1[12]));
+    check(/正确率 66.7%/.test(r1[12].title) && /平均 12 秒/.test(r1[12].title),
+        '分数题悬停提示不对: ' + r1[12].title);
+    check(text(cells(r1[13])[0]) === '明细', '应有明细按钮');
 
     const r2 = cells(rows[1]);
     check(text(r2[0]) === '小红', '第二个学生名不对: ' + text(r2[0]));
     check(text(r2[1]) === '0' && text(r2[2]) === '—', '没做过的学生应显示 0 / —');
+    check(text(r2[12]) === '—', '没做过分数题的学生应显示 —');
 
     // ---------- 3. 点明细 ----------
-    (cells(r1[12])[0].handlers.click || []).forEach(fn => fn({ stopPropagation() {} }));
+    (cells(r1[13])[0].handlers.click || []).forEach(fn => fn({ stopPropagation() {} }));
     await settle();
     check(t.dom.byId['list-view'].hidden === true, '进入明细后应隐藏列表');
     check(t.dom.byId['detail-view'].hidden === false, '进入明细后应显示明细');
@@ -222,8 +232,9 @@ const text = (el) => (el ? String(el.textContent) : null);
     const d1 = cells(drows[1]);
     const d2 = cells(drows[2]);
     check(text(d0[1]) === '② 基础', '难度标签不对: ' + text(d0[1]));
-    check(d0[2]._tex === '2(x - 3) - 4(x + 1)', '题目应渲染出来: ' + d0[2]._tex);
-    check(d0[4]._tex === '-2x-10', '标准答案应渲染出来: ' + d0[4]._tex);
+    check(text(cells(d0[1])[0]) === '分数', '分数题明细应显示「分数」标签，实际: ' + text(cells(d0[1])[0]));
+    check(d0[2]._tex === '1/2(x + 4) - 3', '题目应渲染出来: ' + d0[2]._tex);
+    check(d0[4]._tex === 'x/2-1', '标准答案应渲染出来: ' + d0[4]._tex);
     check(text(cells(d0[5])[0]) === '独立对', '答对应显示「独立对」，实际 ' + text(cells(d0[5])[0]));
     check(text(cells(d1[5])[0]) === '提示后错', '用提示后答错应显示「提示后错」，实际 ' + text(cells(d1[5])[0]));
     check(text(cells(d2[5])[0]) === '看解析', '看解析应显示「看解析」，实际 ' + text(cells(d2[5])[0]));
@@ -274,10 +285,10 @@ const text = (el) => (el ? String(el.textContent) : null);
     // ---------- 8. KaTeX 挂了也要能看 ----------
     const k = await boot('teacher', { katexBroken: true });
     const kRow = cells(k.dom.byId['students-body'])[0];
-    (cells(cells(kRow)[12])[0].handlers.click || []).forEach(fn => fn({ stopPropagation() {} }));
+    (cells(cells(kRow)[13])[0].handlers.click || []).forEach(fn => fn({ stopPropagation() {} }));
     await settle();
     const kFirst = cells(cells(k.dom.byId['detail-body'])[0]);
-    check(text(kFirst[2]) === '2(x - 3) - 4(x + 1)', 'KaTeX 失效时应退化成纯文本，实际: ' + text(kFirst[2]));
+    check(text(kFirst[2]) === '1/2(x + 4) - 3', 'KaTeX 失效时应退化成纯文本，实际: ' + text(kFirst[2]));
 
     // ---------- 9. 我自己（老师本账号的记录）----------
     check(t.dom.byId['self-view'].hidden === false, '老师自己有记录时应显示「我自己」面板');

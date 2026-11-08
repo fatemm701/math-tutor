@@ -8,13 +8,14 @@
 **练习页** `frontend/practice.html`（结构）+ `frontend/js/practice.js`（交互）
 
 - 4 个难度：① 入门 / ② 基础 / ③ 进阶 / ④ 挑战，题目按「去括号 → 合并同类项」的结构生成
-- 物理键盘 + 屏幕软键盘，支持 `x` `a` `b` `^2` `^3`
+- ②-④ 按比例混入分数系数题（L2 25%、L3 40%、L4 50%），题目标「分数」标签；① 保持整数题
+- 物理键盘 + 屏幕软键盘，支持 `x` `a` `b` `^2` `^3` 和分数线 `/`（如 `1/2x + 3/4`）
 - 答对立刻给完整推导；答错 2 次、或点「看解析」也给推导，并附一行「你的答案」对照
 - 答错、用提示、直接看解析分开计数（后两类不计入正确率）
 
 **教师看板** `frontend/teacher.html`
 
-- 汇总卡片 + 学生表格：题数、正确率、错题数、用提示数、看解析数、平均用时、最后活跃、四档分布
+- 汇总卡片 + 学生表格：题数、正确率、错题数、用提示数、看解析数、平均用时、最后活跃、四档分布、分数题正确/总数
 - 点学生看最近 100 条明细
 - 添加学生账号；「我自己」面板单独统计老师本人的练习，不混入学生数据
 
@@ -92,16 +93,16 @@ npm test
 
 | 套件 | 覆盖内容 |
 |---|---|
-| `engine.test.js` | 直接加载 `math-core.js` + `engine-simplify.js`，出题/判题/解析穷举断言（约 17753 条） |
-| `fraction.test.js` | 分数系数：有理数规范化/四则/乘方、解析、格式化、判等、分步解析、判卷（72 条） |
-| `ui.smoke.js` | 加载 `practice.js`：渲染、提示、答对/错两次/看解析的解析展示、锁键盘、下一题 |
+| `engine.test.js` | 直接加载 `math-core.js` + `engine-simplify.js`，出题/判题/解析穷举断言，含分数题标签与步骤（约 21180 条） |
+| `fraction.test.js` | 分数系数：有理数规范化/四则/乘方、解析、格式化、判等、分步解析、判卷，以及四档随机分数题生成（约 3320 条） |
+| `ui.smoke.js` | 加载 `practice.js`：渲染、提示、答对/错两次/看解析的解析展示、锁键盘、下一题、分数标签与 `/` 输入 |
 | `auth.smoke.js` | 登录注册页：角色切换、字段可见性、提交字段名、跳转 |
-| `teacher.smoke.js` | 看板渲染与详情切换 |
-| `api.test.js` | 47 条接口断言（真实起服务 + 临时数据目录） |
+| `teacher.smoke.js` | 看板渲染、分数列/汇总卡/明细标签与详情切换 |
+| `api.test.js` | 53 条接口断言（真实起服务 + 临时数据目录），含 tags 过滤/去重与分数统计 |
 
 页面测试用最小 DOM 桩跑 Node，不需要浏览器；加载 `frontend/js/practice.js` 和 `frontend/vendor/math.js`，与浏览器实际一致。
 
-> 分数系数目前只完成计算层验证（`math-core.js` / `engine-simplify.js`），练习页还没有分数键盘和随机分数题模板；页面仍按整数题运行。
+> 分数系数题已接入练习页：软键盘有 `/`，②-④ 会随机混入分数题并带「分数」标签；教师看板按标签单独统计分数题（正确率只算独立做对/做错，提示与看解析不计入）。
 
 ## 部署
 
@@ -116,14 +117,14 @@ POST /api/auth/login         { name, password }
 POST /api/auth/logout
 GET  /api/auth/me
 POST /api/attempts           { clientId, level, question, answer, studentAnswer,
-                               result, usedHint, revealed, ms }
+                               result, usedHint, revealed, tags?, ms }
 GET  /api/attempts/mine?limit=20
 GET  /api/teacher/students
 GET  /api/teacher/attempts?studentId=...&limit=100
 POST /api/teacher/students   { name, password }
 ```
 
-`result` 取值 `correct` / `wrong` / `partial` / `error`；带同一个 `clientId` 重复上报只记一次。
+`result` 取值 `correct` / `wrong` / `partial` / `error`；`tags` 目前只接受 `fraction`（用于区分分数系数题，未知标签会被静默丢弃）；带同一个 `clientId` 重复上报只记一次。
 所有响应统一为 `{ success: true, data }` 或 `{ success: false, msg }`。
 
 ## 说明
