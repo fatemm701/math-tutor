@@ -7,15 +7,11 @@ const root = path.join(__dirname, '..');
 // 用浏览器实际加载的那份 mathjs（frontend/vendor/math.js），保证测试和线上一致
 const math = require(path.join(root, 'frontend/vendor/math.js'));
 
-const html = fs.readFileSync(path.join(root, 'frontend/practice.html'), 'utf8');
-const start = html.indexOf('function rand(min, max, excludeZero');
-const end = html.indexOf('// 2. 前端交互与防作弊逻辑');
-if (start < 0 || end < 0) {
-    console.error('无法在 frontend/practice.html 中定位引擎代码');
-    process.exit(1);
-}
-const E = new Function('math', html.slice(start, end) +
-    '\nreturn { generateQuestion, evaluateAnswer, parseToPoly, formatPoly, normalizeExpr, buildSteps, hintsFor };')(math);
+const createMathCore = require(path.join(root, 'frontend/js/math-core.js'));
+const createSimplifyEngine = require(path.join(root, 'frontend/js/engine-simplify.js'));
+
+const core = createMathCore(math);
+const E = createSimplifyEngine(math, core);
 
 let pass = 0;
 const fails = [];
@@ -23,6 +19,21 @@ const ok = (cond, msg) => { if (cond) pass++; else if (fails.length < 20) fails.
 const norm = (s) => String(s).replace(/\s+/g, '');
 const samePoly = (a, b) => a.size === b.size && [...a.entries()].every(([k, v]) => b.get(k) === v);
 const answerOf = (question) => E.formatPoly(E.parseToPoly(question)).replace(/\s/g, '');
+// ---------- 0. 分层检查：计算模块不依赖浏览器 ----------
+const readText = (p) => fs.readFileSync(path.join(root, p), 'utf8');
+const mathCoreSource = readText('frontend/js/math-core.js');
+const simplifySource = readText('frontend/js/engine-simplify.js');
+const practiceHtml = readText('frontend/practice.html');
+const practiceSource = readText('frontend/js/practice.js');
+const browserApi = /\b(document|window|katex|localStorage|fetch|confirm|alert)\b/;
+ok(!browserApi.test(mathCoreSource), 'math-core.js 不应依赖浏览器 API');
+ok(!browserApi.test(simplifySource), 'engine-simplify.js 不应依赖浏览器 API');
+ok(!/<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/.test(practiceHtml), 'practice.html 不应再有内联脚本');
+ok(!/\bfunction\s+(expandExpr|polyMul|generateQuestion|evaluateAnswer|buildSteps|hintsFor)\b/.test(practiceSource), 'practice.js 不应再定义数学引擎函数');
+ok(typeof core.expandExpr === 'function' && typeof core.parseToPoly === 'function', 'math-core.js 应导出基础多项式函数');
+ok(typeof E.generateQuestion === 'function' && typeof E.evaluateAnswer === 'function'
+    && typeof E.buildSteps === 'function' && typeof E.hintsFor === 'function',
+    'engine-simplify.js 应导出完整化简引擎 API');
 
 // ---------- 1. 出题质量 + 分步解析：4 档各 300 道 ----------
 const stats = {};

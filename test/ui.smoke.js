@@ -7,8 +7,12 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 // 用浏览器实际加载的那份 mathjs（frontend/vendor/math.js），保证测试和线上一致
 const math = require(path.join(root, 'frontend/vendor/math.js'));
-const html = fs.readFileSync(path.join(root, 'frontend/practice.html'), 'utf8');
-const inline = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)][0][1];
+const createMathCore = require(path.join(root, 'frontend/js/math-core.js'));
+const createSimplifyEngine = require(path.join(root, 'frontend/js/engine-simplify.js'));
+const practiceCode = fs.readFileSync(path.join(root, 'frontend/js/practice.js'), 'utf8');
+
+const core = createMathCore(math);
+const engine = createSimplifyEngine(math, core);
 
 // ---------- 最小 DOM 桩 ----------
 class El {
@@ -125,6 +129,7 @@ const fakeWindow = {
     onload: null,
     location: { replaced: null, replace(to) { this.replaced = to; } }
 };
+fakeWindow.PolyEngine = engine;
 
 // ---------- 启动页面脚本 ----------
 const FixedQuestion = { level: 2, question: '2(x - 3) - 4(x + 1)', answer: '-2x-10' };
@@ -133,7 +138,7 @@ store.set('poly_current_q:u_test', JSON.stringify(
 ));
 
 new Function('window', 'document', 'katex', 'localStorage', 'confirm', 'setTimeout', 'clearTimeout', 'math', 'fetch',
-    inline + '\n')(fakeWindow, document, katex, localStorage, () => true,
+    practiceCode + '\n')(fakeWindow, document, katex, localStorage, () => true,
     () => 0, () => { }, math, fetchStub);
 
 const fails = [];
@@ -302,7 +307,7 @@ async function bootFreshPage(cached) {
     keyboardEl.appendChild(submitEl);
 
     new Function('window', 'document', 'katex', 'localStorage', 'confirm', 'setTimeout', 'clearTimeout', 'math', 'fetch',
-        inline + '\n')(fakeWindow, document, katex, localStorage, () => true,
+        practiceCode + '\n')(fakeWindow, document, katex, localStorage, () => true,
         () => 0, () => { }, math, fetchStub);
 
     await fakeWindow.onload();

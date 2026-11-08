@@ -5,7 +5,7 @@
 
 ## 功能
 
-**练习页** `frontend/practice.html`
+**练习页** `frontend/practice.html`（结构）+ `frontend/js/practice.js`（交互）
 
 - 4 个难度：① 入门 / ② 基础 / ③ 进阶 / ④ 挑战，题目按「去括号 → 合并同类项」的结构生成
 - 物理键盘 + 屏幕软键盘，支持 `x` `a` `b` `^2` `^3`
@@ -28,7 +28,7 @@
 
 | 层 | 实现 |
 |---|---|
-| 前端 | 单文件 HTML + 原生 JS；判题/解析引擎内联在 `practice.html`；KaTeX、mathjs 放在 `frontend/vendor/`，**不依赖 CDN** |
+| 前端 | 页面 + 模块化原生 JS；基础多项式在 `frontend/js/math-core.js`，出题/判题/解析在 `frontend/js/engine-simplify.js`，渲染与交互在 `frontend/js/practice.js`；KaTeX、mathjs 放在 `frontend/vendor/`，**不依赖 CDN** |
 | 后端 | Node.js 22 + Express 5，只做静态托管 + 认证 + 记录读写，**不做数学计算** |
 | 存储 | 单个 JSON 文件 `data/db.json`（先写临时文件再 rename，原子替换；无文件锁，只支持单实例） |
 | 部署 | Docker / Docker Compose，非 root（uid 1000）运行，内置 healthcheck |
@@ -43,7 +43,12 @@ backend/
   routes/              auth / attempts / teacher 三组接口
 frontend/
   index.html           登录 / 注册
-  practice.html        练习页（判题与解析引擎在这里）
+  practice.html        练习页结构（软键盘、题目/解析面板）
+  css/practice.css     练习页样式
+  js/
+    math-core.js       多项式解析、展开、格式化（纯计算）
+    engine-simplify.js 整式化简：出题、判题、分步解析、提示
+    practice.js        渲染、键盘、缓存、上报
   teacher.html         教师看板
   vendor/              katex、mathjs 及字体（离线可用）
 test/
@@ -86,13 +91,13 @@ npm test
 
 | 套件 | 覆盖内容 |
 |---|---|
-| `engine.test.js` | 出题 + 判题 + 解析引擎穷举断言（约 17747 条） |
-| `ui.smoke.js` | 练习页交互：渲染、提示、答对/错两次/看解析的解析展示、锁键盘、下一题 |
+| `engine.test.js` | 直接加载 `math-core.js` + `engine-simplify.js`，出题/判题/解析穷举断言（约 17748 条） |
+| `ui.smoke.js` | 加载 `practice.js`：渲染、提示、答对/错两次/看解析的解析展示、锁键盘、下一题 |
 | `auth.smoke.js` | 登录注册页：角色切换、字段可见性、提交字段名、跳转 |
 | `teacher.smoke.js` | 看板渲染与详情切换 |
 | `api.test.js` | 47 条接口断言（真实起服务 + 临时数据目录） |
 
-页面测试用最小 DOM 桩跑 Node，不需要浏览器；加载的是 `frontend/vendor/math.js`，和浏览器实际用的是同一份。
+页面测试用最小 DOM 桩跑 Node，不需要浏览器；加载 `frontend/js/practice.js` 和 `frontend/vendor/math.js`，与浏览器实际一致。
 
 ## 部署
 
@@ -119,4 +124,4 @@ POST /api/teacher/students   { name, password }
 
 ## 说明
 
-个人教学用途，未做开源授权。题库与判题逻辑在 `frontend/practice.html` 内联维护。
+个人教学用途，未做开源授权。题库与判题逻辑在 `frontend/js/engine-simplify.js`（基础多项式在 `math-core.js`），页面交互在 `frontend/js/practice.js`。

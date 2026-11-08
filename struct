@@ -9,11 +9,16 @@ poly-drill/
 │     └─ teacher.js      # 看板数据（学生汇总 / 明细 / 我自己）+ 直接添加学生
 ├─ frontend/
 │  ├─ index.html         # 登录 / 注册页
-│  ├─ practice.html      # 学生答题页（出题、判分、分步解析、软键盘全在这一个文件里）
+│  ├─ practice.html      # 学生答题页结构（软键盘、题目/解析面板）
+│  ├─ css/practice.css   # 练习页样式
+│  ├─ js/
+│  │  ├─ math-core.js    # 多项式解析、展开、格式化（纯计算）
+│  │  ├─ engine-simplify.js # 整式化简：出题、判题、分步解析、提示
+│  │  └─ practice.js     # 渲染、键盘、缓存、上报
 │  ├─ teacher.html       # 老师看板
 │  └─ vendor/            # 本地 KaTeX + mathjs（离线可用，不依赖 CDN）
 ├─ test/
-│  ├─ engine.test.js     # 出题/判卷引擎（从 practice.html 抽内联脚本跑）
+│  ├─ engine.test.js     # 直接加载 math-core.js + engine-simplify.js
 │  ├─ ui.smoke.js        # 交互冒烟（软键盘、提交、提示、看解析、默认难度）
 │  ├─ teacher.smoke.js   # 看板冒烟
 │  └─ api.test.js        # 接口测试（真实起服务、临时 DATA_DIR）
