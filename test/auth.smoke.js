@@ -164,10 +164,10 @@ async function submit() {
     // 4. 老师注册提交：带 teacherInvite，不带 inviteCode
     nameEl.value = 'gyf';
     passwordEl.value = 'secret123';
-    teacherEl.value = 'PDT-K7M2Q9';
+    teacherEl.value = 'TEST-INVITE1';
     await submit();
     check(lastRegister && lastRegister.role === 'teacher', '提交的角色是 teacher');
-    check(lastRegister && lastRegister.teacherInvite === 'PDT-K7M2Q9', '老师提交带上管理员口令');
+    check(lastRegister && lastRegister.teacherInvite === 'TEST-INVITE1', '老师提交带上管理员口令');
     check(lastRegister && lastRegister.inviteCode === '', '老师提交不带学生邀请码');
     check(inviteResult.hidden === false && inviteCodeEl.textContent === 'ABC123', '注册成功展示拿到的邀请码');
 
