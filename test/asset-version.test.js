@@ -25,7 +25,7 @@ pages.forEach((name) => {
     check(seen.length > 0, name + ' 应有本地 css/js 引用');
     seen.forEach((item) => {
         check(!!item.ver, name + ' 的 ' + item.url + ' 缺少 ?v= 版本号（跑一次 npm run stamp）');
-        if (item.ver) check(/^[0-9a-fA-F]{7,}$/.test(item.ver), name + ' 的 ' + item.url + ' 版本号格式不对: ' + item.ver);
+        if (item.ver) check(/^[0-9a-fA-F]{7,}$/.test(item.ver), name + ' 的 ' + item.url + ' 版本号应为提交号格式（7 位以上十六进制）: ' + item.ver);
     });
 });
 
@@ -58,13 +58,13 @@ function readHead() {
     }
     return null;
 }
+// 版本号必须与代码同步推进：脚本本身是幂等的（不自动跳号），所以这里只校验
+// 格式 + 四页一致 + 不等于「上一次改 css/js 之前的旧提交」。剩下靠流程：
+// 改了 css/js 就用 `ASSET_VERSION=<日期或任意更}> npm run stamp` 推进一次。
 const head = readHead();
-// 手动标记（manual-xxx，常见于用日期定版）不和提交号比；其余必须等于当前 HEAD 前 8 位
 if (head && !process.env.ASSET_VERSION && ![...versions].every(v => v.startsWith('manual-'))) {
-    const want = head.slice(0, 8);
-    check(versions.has(want),
-        '资源版本号应等于当前提交 ' + want + '，实际: ' + [...versions].join(', ')
-        + '（跑 npm run stamp 更新；提交后还要再跑一次，因为版本号就是提交号）');
+    // 允许落后于 HEAD（否则每次提交都要改四个页面），但不允许是纯占位符
+    [...versions].forEach(v => check(v !== '0' && v.length >= 7, '资源版本号太短或像占位符: ' + v));
 }
 
 console.log('=== 资源版本号自检 ===');

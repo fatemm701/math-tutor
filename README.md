@@ -152,20 +152,21 @@ npm test
 
 ## 静态资源版本号（改了 CSS/JS 后必须做）
 
-四个页面引用本地样式和脚本时都带 `?v=<提交号>`，例如 `<link rel="stylesheet" href="css/app-nav.css?v=db5c7625">`。
+四个页面引用本地样式和脚本时都带 `?v=<版本号>`，例如 `<link rel="stylesheet" href="css/app-nav.css?v=ce354981">`。
 浏览器按 URL 缓存，换了版本号才会重新拉取，学生端不必手动强刷。
 `vendor/`（KaTeX、mathjs）是第三方固定版本，不带版本号。
 
-发版流程：
+**只有改了 `frontend/css/*.css` 或 `frontend/js/*.js` 才需要推进版本号**，其他改动（后端、测试、文档）不用管。推进方式（吃饱一次，四页统一）：
 
 ```bash
-npm run stamp                # 改完代码立刻改版本号（取当前 HEAD 前 8 位）
-git add -A && git commit -m "..." && git push
-npm run stamp                # 提交后版本号变成新提交号，再跑一次并 amend / 补一个提交
+ASSET_VERSION=20261109 npm run stamp     # 值随便取，只要与上次不同（日期最省心）
+node scripts/stamp-assets.js --check     # 校验四页一致、格式合法
 ```
 
-版本号就是提交号，所以**提交后要再执行一次 `npm run stamp`**，否则 `asset-version.test.js` 会提示「版本号应等于当前提交」。
-想跳过这种鸡生蛋问题，也可以直接手动改：把四个页面里的 `?v=` 换成任意递增的标记（如日期 `20261109`），再用 `ASSET_VERSION=20261109 npm run stamp` 保持统一。
+`npm run stamp` 本身是**幂等**的：不指定 `ASSET_VERSION` 时它沿用页面里已有的版本号，不会自动跳号
+（原因是版本号若绑定提交号，提交会改哈希、版本号永远落后一步，每次提交都得改四个页面，很脏）。
+所以规矩只有一条：**动过 css/js 就带上 `ASSET_VERSION=<新值>` 跑一次 `npm run stamp` 再提交**。
+页面里写 `?v=manual-xxx` 也可以，`stamp` 会原样保留这种手动标记。
 
 ## 部署
 

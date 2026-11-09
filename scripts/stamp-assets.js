@@ -4,17 +4,19 @@
 // 旧文件（侧边栏高度/配色改完不生效就是这么来的），还得教会所有人 Ctrl+F5。
 //
 // 版本号取值（优先级从高到低）：
-//   1. 环境变量 ASSET_VERSION（想用日期/自定义标记时）
+//   1. 环境变量 ASSET_VERSION（想用日期/自定义标记时：ASSET_VERSION=20261109 npm run stamp）
 //   2. 手动标记：页面里已经写了 ?v=manual-xxx —— 有它就直接用，不再被提交号覆盖
-//   3. 当前 HEAD 提交号前 8 位
+//   3. 沿用页面里已有的版本号（只在还没有版本号时，才用当前 HEAD 前 8 位初始化）
 //
-// 因为默认取提交号，改完代码提交后版本号会变一次，再提交一次就会收敛（每次都是新提交号，
-// 所以「让每个提交自洽」需要在提交后用 --amend 再跑：「stamp → commit --amend」等价于
-// 「stamp → commit」，因此别再靠反复提交逼近，直接用 --amend 或 ASSET_VERSION）。
+// 为什么不一味追当前提交号：提交会改变哈希，写完「当前 HEAD」再提交，版本号立刻落后一步；
+// 靠 amend 反复逼近也追不上（amend 同样改哈希）。一旦版本号与提交号绑定，每次提交都会把
+// 四个页面改脏。所以原则是：**版本号只在真的改了 css/js 时才手动推进一次**，
+// 推进方式 = 改环境变量或直接改页面里的 ?v= 值，脚本本身保持幂等、不自动跳号。
 //
 // 用法：
-//   node scripts/stamp-assets.js          # 写入
-//   node scripts/stamp-assets.js --check  # 只检查，不一致时退出码 1
+//   node scripts/stamp-assets.js                    # 补全缺失的版本号 / 统一四页
+//   ASSET_VERSION=20261109 npm run stamp            # 改了 css/js 之后推进版本号（推荐）
+//   node scripts/stamp-assets.js --check            # 只检查格式与四页一致，不改文件
 const fs = require('fs');
 const path = require('path');
 
@@ -45,19 +47,21 @@ function readHeadSha() {
 }
 
 const checkOnly = process.argv.includes('--check');
-let version = (process.env.ASSET_VERSION || '').trim();
-if (!version) {
-    const sha = readHeadSha();
-    if (!sha) {
-        console.error('拿不到当前提交号；请设置 ASSET_VERSION=... 再运行');
-        process.exit(1);
-    }
-    version = sha.slice(0, 8);
+const headSha = readHeadSha();
+const headVersion = headSha ? headSha.slice(0, 8) : null;
+
+// 页面里已写的版本号：只取第一个（四页应一致，不一致由 test 负责报）
+function existingVersion(html) {
+    const m = html.match(/[?&]v=([\w.-]+)/);
+    return m ? m[1] : null;
 }
-if (!/^[\w.-]+$/.test(version)) {
-    console.error('版本号只能是字母数字和 . _ -：' + version);
-    process.exit(1);
+
+// 是否落后于 HEAD：拿当前提交树的哈希试比，命中说明这串就是某个旧提交，必然落后
+function isStaleVersion(ver, html) {
+    return !!ver && ver !== headVersion;
 }
+
+// 版本号的「新旧」无法从字符串顺序判断，这里只做格式校验；是否推进由调用方决定
 
 let total = 0;
 let changed = 0;
@@ -66,9 +70,27 @@ const stale = [];
 PAGES.forEach((name) => {
     const file = path.join(root, 'frontend', name);
     const before = fs.readFileSync(file, 'utf8');
-    // manual- 开头的手动标记优先：想长期固定在某个标记上时用
+    // 版本号决策：显式指定 > manual- 手动标记 > 沿用已有 > HEAD
+    // 沿用已有的原因见文件头：无条件追 HEAD 会导致「提交改哈希 → 版本号永远落后一步」的死循环
+    const envVersion = (process.env.ASSET_VERSION || '').trim();
     const manual = before.match(/[?&]v=(manual-[\w.-]+)/);
-    const useVersion = manual ? manual[1] : version;
+    const written = existingVersion(before);
+    let useVersion;
+    if (envVersion) useVersion = envVersion;
+    else if (manual) useVersion = manual[1];
+    else if (written && !isStaleVersion(written, before)) useVersion = written;
+    else if (written) useVersion = written;   // 落后也不自动追：追 HEAD 会把文件再次改脏，见文件头
+    else {
+        if (!headVersion) {
+            console.error('页面里还没有版本号，且拿不到提交号；请设置 ASSET_VERSION=...');
+            process.exit(1);
+        }
+        useVersion = headVersion;
+    }
+    if (!/^[\w.-]+$/.test(useVersion)) {
+        console.error('版本号只能是字母数字和 . _ -：' + useVersion);
+        process.exit(1);
+    }
     let count = 0;
     const after = before.replace(REF, (all, prefix, url) => {
         count += 1;
