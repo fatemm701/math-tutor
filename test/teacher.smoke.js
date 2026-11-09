@@ -277,6 +277,20 @@ const formatCards = (box) => cells(box).map(c => text(cells(c)[0]) + '=' + text(
     check(/筛选后 10 条 \/ 全部 10 条/.test(text(t.dom.byId['list-filter-summary'])),
         '看板应有筛选汇总文案，实际: ' + text(t.dom.byId['list-filter-summary']));
 
+    // ---------- 1b. 筛选条初始选中态 ----------
+    const chipsOn = (box) => cells(box)
+        .flatMap(line => cells(line))
+        .filter(el => el.getAttribute && el.getAttribute('data-field'))
+        .filter(el => /(^|\s)on(\s|$)/.test(el.className))
+        .map(el => el.getAttribute('data-field') + ':' + el.getAttribute('data-value'));
+    let onNow = chipsOn(t.dom.byId['list-filter']);
+    check(onNow.indexOf('result:') >= 0, '结果筛选初始应选中「全部」，实际 ' + JSON.stringify(onNow));
+    check(onNow.indexOf('kind:') >= 0, '题型筛选初始应选中「全部」，实际 ' + JSON.stringify(onNow));
+    check(onNow.indexOf('range:') >= 0, '时间筛选初始应选中「全部」，实际 ' + JSON.stringify(onNow));
+    check(!onNow.some(s => s.indexOf('level:1') === 0 || s.indexOf('level:2') === 0
+        || s.indexOf('level:3') === 0 || s.indexOf('level:4') === 0),
+        '难度筛选初始不该选中具体档位，实际 ' + JSON.stringify(onNow));
+
     // ---------- 2. 学生列表 ----------
     const rows = cells(t.dom.byId['students-body']);
     check(rows.length === 2, '应渲染 2 个学生，实际 ' + rows.length);
@@ -433,12 +447,33 @@ const formatCards = (box) => cells(box).map(c => text(cells(c)[0]) + '=' + text(
 
     clickChip(t.dom.byId['list-filter'], 'result', 'correct');   // 取消结果筛选
     clickChip(t.dom.byId['list-filter'], 'kind', 'fraction');    // 取消题型筛选
-    clickChip(t.dom.byId['list-filter'], 'range', 'all');        // 回到全部时间
+    clickChip(t.dom.byId['list-filter'], 'range', '');           // 回到全部时间
     listCards = formatCards(t.dom.byId['summary']);
     check(listCards[1] === '记录数=10 条', '全部取消后应回到 10 条，实际 ' + listCards[1]);
     check(listCards[9] === '平均用时=15 秒', '没有筛选时平均用时应恢复');
     check(/筛选后 10 条 \/ 全部 10 条/.test(text(t.dom.byId['list-filter-summary'])),
         '取消筛选后文案应恢复');
+
+    // 点「全部」或再点同一项，都应回到该组无筛选，且「全部」重新高亮
+    clickChipByKey(t.dom.byId['list-filter'], 'kind', 'fraction');
+    onNow = chipsOn(t.dom.byId['list-filter']);
+    check(onNow.indexOf('kind:fraction') >= 0, '点分数题后该 chip 应高亮，实际 ' + JSON.stringify(onNow));
+    check(onNow.indexOf('kind:') < 0, '点分数题后「全部」不该再高亮，实际 ' + JSON.stringify(onNow));
+    clickChipByKey(t.dom.byId['list-filter'], 'kind', '');
+    onNow = chipsOn(t.dom.byId['list-filter']);
+    check(onNow.indexOf('kind:') >= 0, '点「全部」后应回到无筛选，实际 ' + JSON.stringify(onNow));
+    clickChipByKey(t.dom.byId['list-filter'], 'range', 'today');
+    onNow = chipsOn(t.dom.byId['list-filter']);
+    check(onNow.indexOf('range:today') >= 0, '点今天后该 chip 应高亮，实际 ' + JSON.stringify(onNow));
+    clickChipByKey(t.dom.byId['list-filter'], 'range', '');
+    listCards = formatCards(t.dom.byId['summary']);
+    check(listCards[1] === '记录数=10 条', '时间筛选复位后应回到 10 条，实际 ' + listCards[1]);
+
+    // 夜间模式下选中态不能靠 CSS 变量漏配（否则点了也看不出变化）
+    const darkCss = (html.match(/html\[data-theme="dark"\][\s\S]*?\}/) || [''])[0];
+    check(/--chip-on-fg/.test(darkCss), '夜间配色应定义 --chip-on-fg');
+    check(/--chip-ring/.test(darkCss), '夜间配色应定义 --chip-ring');
+    check(/\.chip\.on[\s\S]*?var\(--chip-on-fg\)/.test(html), '选中 chip 的前景色应使用 --chip-on-fg');
 
     // ---------- 5. 添加学生 ----------
     const getBefore = t.apiCalls.filter(c => c.url === '/api/teacher/students' && !c.opts.method).length;

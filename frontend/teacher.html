@@ -36,6 +36,8 @@
             --tag-hinted-bg: #FFFBEB;  --tag-hinted-fg: #B45309;
             --tag-revealed-bg: #EEF2FF; --tag-revealed-fg: #4338CA;
             --tag-fraction-bg: #F5F3FF; --tag-fraction-fg: #6D28D9;
+            --chip-ring: rgba(79, 70, 229, 0.18);
+            --chip-on-fg: #fff;
             --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
         }
 
@@ -59,6 +61,8 @@
             --tag-hinted-bg: #3A3218;  --tag-hinted-fg: #F5D48B;
             --tag-revealed-bg: #3A3560; --tag-revealed-fg: #C4BCFF;
             --tag-fraction-bg: #3A2E52; --tag-fraction-fg: #D8B4FE;
+            --chip-ring: rgba(129, 140, 248, 0.35);
+            --chip-on-fg: #1E1E2E;
             --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.45);
             color-scheme: dark;
         }
@@ -288,12 +292,20 @@
             cursor: pointer;
         }
 
-        .chip:hover { border-color: var(--primary); }
+        .chip:hover { border-color: var(--primary); background: var(--row-hover); }
 
-        .chip.on {
-            color: #fff;
+        .chip.on,
+        .chip.on:hover {
+            color: var(--chip-on-fg);
             background: var(--primary);
             border-color: var(--primary);
+            font-weight: 600;
+            box-shadow: 0 0 0 2px var(--chip-ring);
+        }
+
+        .filter-bar button:focus-visible {
+            outline: 2px solid var(--primary);
+            outline-offset: 2px;
         }
 
         .filter-summary {
@@ -676,12 +688,12 @@
             { key: '4', text: '④ 挑战' }
         ];
         const KIND_OPTIONS = [
-            { key: 'all', text: '全部' },
+            { key: '', text: '全部' },
             { key: 'fraction', text: '分数题' },
             { key: 'integer', text: '整数题' }
         ];
         const RANGE_OPTIONS = [
-            { key: 'all', text: '全部' },
+            { key: '', text: '全部' },
             { key: 'week', text: '最近 7 天' },
             { key: 'today', text: '今天' }
         ];
@@ -758,7 +770,8 @@
                 line.appendChild(label);
 
                 row.options.forEach(opt => {
-                    const active = filter[row.field] === opt.key;
+                    const active = filter[row.field] === opt.key
+                        || (row.field === 'range' && (!filter.range || filter.range === 'all') && opt.key === '');
                     const chip = document.createElement('button');
                     chip.type = 'button';
                     chip.className = 'chip' + (active ? ' on' : '');
@@ -769,9 +782,10 @@
                     chip.textContent = opt.text;
                     chip.addEventListener('click', () => {
                         if (row.field === 'range') {
-                            filter.range = opt.key || 'all';
+                            filter.range = opt.key || 'all';          // 内部统一用 all 表示不限
                         } else {
-                            filter[row.field] = (filter[row.field] === opt.key) ? '' : opt.key;
+                            const cur = filter[row.field] || '';
+                            filter[row.field] = (cur === opt.key) ? '' : opt.key;
                         }
                         onChange();
                     });
@@ -873,7 +887,8 @@
 
         // 平均用时：只有「时间=全部」且没有其它筛选时才等于全量平均，否则 —（后端没按时间分桶存用时）
         function listAvgMs() {
-            const noFilter = !listFilter.result && !listFilter.level && !listFilter.kind
+            const noFilter = !listFilter.result && !listFilter.level
+                && (!listFilter.kind || listFilter.kind === 'all')
                 && (!listFilter.range || listFilter.range === 'all');
             if (!noFilter) return '—';
             let ms = 0;
@@ -948,7 +963,6 @@
             }
 
             renderFilterBar($('list-filter'), listFilter, onListFilterChange);
-            refreshListSummary();
         }
 
         function onListFilterChange() {
