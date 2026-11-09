@@ -44,6 +44,7 @@ const IDS = [
     'self-view', 'self-stats', 'self-detail',
     'add-name', 'add-pass', 'add-btn', 'add-msg', 'add-form',
     'detail-view', 'detail-title', 'detail-body', 'detail-empty', 'detail-msg',
+    'list-filter', 'list-filter-summary', 'detail-filter', 'detail-filter-summary',
     'back', 'refresh', 'logout', 'theme-toggle'
 ];
 
@@ -79,43 +80,99 @@ function makeStore() {
 const now = Date.now();
 const zeroLevels = [1, 2, 3, 4].map(level => ({ level, total: 0, correct: 0, avgMs: 0, accuracy: null }));
 
+// 后端 /api/teacher/students 返回的稀疏计数：counts[range][bucket][level] = { fraction, integer }
+const EMPTY_COUNTS = () => {
+    const range = () => {
+        const buckets = {};
+        ['correct', 'hintedCorrect', 'hintedWrong', 'wrong', 'unmerged', 'error', 'revealed'].forEach(b => {
+            buckets[b] = {};
+            [1, 2, 3, 4].forEach(lv => { buckets[b][lv] = { fraction: 0, integer: 0 }; });
+        });
+        return buckets;
+    };
+    return { all: range(), week: range(), today: range() };
+};
+
+// 小明：10 条记录 → 独立对 6（L1 整数 2、L2 整数 2 + 分数 2）、提示后对 1（L2 分数）、
+// 提示后错 1（L3 整数）、没化简完 2（L1 整数 1 条 = 没合并、L2 整数 1 条 = 没去括号）、看解析 0
+// 分数题：4 条（L2 3 条：独立对 2 + 提示后对 1；L3 1 条：答错），算对 3
+function countsA() {
+    const c = EMPTY_COUNTS();
+    c.all.correct[1].integer = 2;
+    c.all.correct[2].integer = 2;
+    c.all.correct[2].fraction = 2;
+    c.all.hintedCorrect[2].fraction = 1;
+    c.all.hintedWrong[3].integer = 1;
+    c.all.unmerged[1].integer = 1;
+    c.all.unmerged[2].integer = 1;
+    // 时间范围：最近 7 天少掉 2 条独立对，今天只剩 1 条独立对 + 1 条提示后对
+    c.week.correct[1].integer = 1;
+    c.week.correct[2].integer = 1;
+    c.week.correct[2].fraction = 2;
+    c.week.hintedCorrect[2].fraction = 1;
+    c.week.hintedWrong[3].integer = 1;
+    c.week.unmerged[1].integer = 1;
+    c.week.unmerged[2].integer = 1;
+    c.today.correct[1].integer = 1;
+    c.today.hintedCorrect[2].fraction = 1;
+    return c;
+}
+
+const fractionZero = () => ({
+    total: 0, correct: 0, hintedCorrect: 0, hintedWrong: 0, wrong: 0, unmerged: 0, error: 0,
+    revealed: 0, gaveUp: 0, hinted: 0, scored: 0, correctCount: 0, accuracy: null, avgMs: 0
+});
+
+// 分数题：3 条（L2：独立对 2 + 提示后对 1），按口径算对 3
 const studentA = {
     user: { id: 'u_a', name: '小明', role: 'student', createdAt: now - 86400000 },
     stats: {
-        total: 10, correct: 6, wrong: 3, hinted: 1, revealed: 0, scored: 9,
-        accuracy: 66.7, avgMs: 15000, lastAt: now,
-        fraction: { total: 4, correct: 2, wrong: 1, hinted: 1, revealed: 0, scored: 3, accuracy: 66.7, avgMs: 12000 },
+        total: 10, correct: 6, hintedCorrect: 1, hintedWrong: 1, hinted: 2, wrong: 0,
+        unmerged: 2, error: 0, revealed: 0, gaveUp: 0, scored: 10, correctCount: 7,
+        accuracy: 70, avgMs: 15000, lastAt: now,
+        fraction: Object.assign(fractionZero(), {
+            total: 3, correct: 2, hintedCorrect: 1, hinted: 1,
+            scored: 3, correctCount: 3, accuracy: 100, avgMs: 12000
+        }),
         byLevel: [
             { level: 1, total: 4, correct: 3, avgMs: 9000, accuracy: 75 },
             { level: 2, total: 6, correct: 3, avgMs: 19000, accuracy: 50 },
             { level: 3, total: 0, correct: 0, avgMs: 0, accuracy: null },
             { level: 4, total: 0, correct: 0, avgMs: 0, accuracy: null }
         ]
-    }
+    },
+    counts: countsA()
 };
 
 const studentB = {
     user: { id: 'u_b', name: '小红', role: 'student', createdAt: now - 1000 },
     stats: {
-        total: 0, correct: 0, wrong: 0, hinted: 0, revealed: 0, scored: 0,
+        total: 0, correct: 0, hintedCorrect: 0, hintedWrong: 0, hinted: 0, wrong: 0,
+        unmerged: 0, error: 0, revealed: 0, gaveUp: 0, scored: 0, correctCount: 0,
         accuracy: null, avgMs: 0, lastAt: null,
-        fraction: { total: 0, correct: 0, wrong: 0, hinted: 0, revealed: 0, scored: 0, accuracy: null, avgMs: 0 },
+        fraction: fractionZero(),
         byLevel: zeroLevels
-    }
+    },
+    counts: EMPTY_COUNTS()
 };
 
 const attemptsPayload = [
     {
         id: 'a1', level: 2, question: '1/2(x + 4) - 3', answer: 'x/2-1', studentAnswer: 'x/2-1',
-        result: 'correct', usedHint: false, revealed: false, tags: ['fraction'], ms: 8000, createdAt: now - 1000
+        result: 'correct', usedHint: false, revealed: false, gaveUp: false,
+        tags: ['fraction'], ms: 8000, createdAt: now - 1000
     },
     {
         id: 'a2', level: 3, question: '-3(4x^2 + 4) + x', answer: 'x-12x^2-12', studentAnswer: '3x',
-        result: 'wrong', usedHint: true, revealed: false, ms: 20000, createdAt: now - 2000
+        result: 'wrong', usedHint: true, revealed: false, gaveUp: false, ms: 20000, createdAt: now - 2000
     },
     {
         id: 'a3', level: 4, question: 'a(b + 2) - 3(a^2 - ab)', answer: '4ab+2a-3a^2', studentAnswer: '',
-        result: 'wrong', usedHint: false, revealed: true, ms: 60000, createdAt: now - 3000
+        result: 'wrong', usedHint: false, revealed: true, gaveUp: true, tags: ['fraction'], ms: 60000, createdAt: now - 3000
+    },
+    {
+        id: 'a4', level: 1, question: '2(x - 3) - 4(x + 1)', answer: '-2x-10', studentAnswer: '2(x - 3) - 4(x + 1)',
+        result: 'parentheses', usedHint: false, revealed: false, gaveUp: false, ms: 4000, createdAt: now - 4000
     }
 ];
 
@@ -123,11 +180,13 @@ const attemptsPayload = [
 const selfPayload = {
     user: { id: 'u_t', name: '王老师', role: 'teacher' },
     stats: {
-        total: 8, correct: 5, wrong: 2, hinted: 1, revealed: 0, scored: 7,
-        accuracy: 71.4, avgMs: 12000, lastAt: now,
-        fraction: { total: 0, correct: 0, wrong: 0, hinted: 0, revealed: 0, scored: 0, accuracy: null, avgMs: 0 },
+        total: 8, correct: 5, hintedCorrect: 1, hintedWrong: 0, hinted: 1, wrong: 2,
+        unmerged: 0, error: 0, revealed: 0, gaveUp: 0, scored: 8, correctCount: 6,
+        accuracy: 75, avgMs: 12000, lastAt: now,
+        fraction: fractionZero(),
         byLevel: zeroLevels
-    }
+    },
+    counts: EMPTY_COUNTS()
 };
 
 function makeFetch(role, apiCalls) {
@@ -193,6 +252,8 @@ const fails = [];
 const check = (cond, msg) => { if (!cond) fails.push(msg); };
 const cells = (el) => (el && el.children) || [];
 const text = (el) => (el ? String(el.textContent) : null);
+// 汇总卡片：「标题=数值」列表
+const formatCards = (box) => cells(box).map(c => text(cells(c)[0]) + '=' + text(cells(c)[1]));
 
 (async () => {
     // ---------- 1. 老师身份 ----------
@@ -201,16 +262,20 @@ const text = (el) => (el ? String(el.textContent) : null);
     check(/老师/.test(who) && /TZDGJG/.test(who), '顶部应显示老师姓名和邀请码，实际: ' + who);
 
     const cards = cells(t.dom.byId['summary']);
-    check(cards.length === 8, '汇总卡片应有 8 张，实际 ' + cards.length);
+    check(cards.length === 10, '汇总卡片应有 10 张，实际 ' + cards.length);
     const pairs = cards.map(c => text(cells(c)[0]) + '=' + text(cells(c)[1]));
     check(pairs[0] === '学生=2 人', '学生数不对: ' + pairs[0]);
-    check(pairs[1] === '总记录=10 条', '总记录不对: ' + pairs[1]);
-    check(pairs[2] === '正确率（不含提示/看解析）=66.7%', '正确率不对: ' + pairs[2]);
+    check(pairs[1] === '记录数=10 条', '总记录不对: ' + pairs[1]);
+    check(pairs[2] === '正确率（提示算对，看解析算错）=70%', '正确率不对: ' + pairs[2]);
     check(pairs[3] === '独立做对=6 题', '独立做对不对: ' + pairs[3]);
-    check(pairs[4] === '平均用时=15 秒', '平均用时不对: ' + pairs[4]);
-    check(pairs[5] === '用过提示=1 题', '提示数不对: ' + pairs[5]);
-    check(pairs[6] === '看解析=0 题', '看解析数不对: ' + pairs[6]);
-    check(pairs[7] === '分数题（正确/总数）=2/4', '分数题汇总不对: ' + pairs[7]);
+    check(pairs[4] === '提示后对=1 题', '提示后对不对: ' + pairs[4]);
+    check(pairs[5] === '错误=3 题', '错误数不对: ' + pairs[5]);
+    check(pairs[6] === '用过提示=2 题', '提示数不对: ' + pairs[6]);
+    check(pairs[7] === '看解析=0 题', '看解析数不对: ' + pairs[7]);
+    check(pairs[8] === '分数题（对/总）=3/3', '分数题汇总不对: ' + pairs[8]);
+    check(pairs[9] === '平均用时=15 秒', '平均用时不对: ' + pairs[9]);
+    check(/筛选后 10 条 \/ 全部 10 条/.test(text(t.dom.byId['list-filter-summary'])),
+        '看板应有筛选汇总文案，实际: ' + text(t.dom.byId['list-filter-summary']));
 
     // ---------- 2. 学生列表 ----------
     const rows = cells(t.dom.byId['students-body']);
@@ -219,9 +284,10 @@ const text = (el) => (el ? String(el.textContent) : null);
 
     const r1 = cells(rows[0]);
     check(text(r1[1]) === '10', '记录数不对: ' + text(r1[1]));
-    check(text(r1[2]) === '66.7%', '正确率不对: ' + text(r1[2]));
+    check(text(r1[2]) === '70%', '正确率不对: ' + text(r1[2]));
+    check(/算对 7 \/ 共 10/.test(r1[2].title), '正确率悬停应说明算对口径，实际: ' + r1[2].title);
     check(text(r1[3]) === '3', '错题数不对: ' + text(r1[3]));
-    check(text(r1[4]) === '1', '提示数不对: ' + text(r1[4]));
+    check(text(r1[4]) === '2', '提示数不对: ' + text(r1[4]));
     check(text(r1[5]) === '0', '看解析数不对: ' + text(r1[5]));
     check(text(r1[6]) === '15 秒', '平均用时不对: ' + text(r1[6]));
     check(/^今天 \d\d:\d\d$/.test(text(r1[7])), '最近时间格式不对: ' + text(r1[7]));
@@ -229,8 +295,8 @@ const text = (el) => (el ? String(el.textContent) : null);
     check(text(r1[9]) === '3/6', '② 基础列不对: ' + text(r1[9]));
     check(text(r1[10]) === '—' && text(r1[11]) === '—', '没做过的难度应显示 —');
     check(/正确率 75%/.test(r1[8].title), '分难度悬停提示不对: ' + r1[8].title);
-    check(text(r1[12]) === '2/4', '分数题列不对: ' + text(r1[12]));
-    check(/正确率 66.7%/.test(r1[12].title) && /平均 12 秒/.test(r1[12].title),
+    check(text(r1[12]) === '3/3', '分数题列不对: ' + text(r1[12]));
+    check(/正确率 100%/.test(r1[12].title) && /平均 12 秒/.test(r1[12].title),
         '分数题悬停提示不对: ' + r1[12].title);
     check(text(cells(r1[13])[0]) === '明细', '应有明细按钮');
 
@@ -252,10 +318,11 @@ const text = (el) => (el ? String(el.textContent) : null);
         '明细请求应带上 studentId: ' + (attemptCalls[0] || {}).url);
 
     const drows = cells(t.dom.byId['detail-body']);
-    check(drows.length === 3, '应渲染 3 条记录，实际 ' + drows.length);
+    check(drows.length === 4, '应渲染 4 条记录，实际 ' + drows.length);
     const d0 = cells(drows[0]);
     const d1 = cells(drows[1]);
     const d2 = cells(drows[2]);
+    const d3 = cells(drows[3]);
     check(text(d0[1]) === '② 基础', '难度标签不对: ' + text(d0[1]));
     check(text(cells(d0[1])[0]) === '分数', '分数题明细应显示「分数」标签，实际: ' + text(cells(d0[1])[0]));
     check(d0[2]._tex === '1/2(x + 4) - 3', '题目应渲染出来: ' + d0[2]._tex);
@@ -263,14 +330,115 @@ const text = (el) => (el ? String(el.textContent) : null);
     check(text(cells(d0[5])[0]) === '独立对', '答对应显示「独立对」，实际 ' + text(cells(d0[5])[0]));
     check(text(cells(d1[5])[0]) === '提示后错', '用提示后答错应显示「提示后错」，实际 ' + text(cells(d1[5])[0]));
     check(text(cells(d2[5])[0]) === '看解析', '看解析应显示「看解析」，实际 ' + text(cells(d2[5])[0]));
+    check(text(cells(d3[5])[0]) === '没去括号', '答案对但没去括号应显示「没去括号」，实际 ' + text(cells(d3[5])[0]));
+    check(/tag-partial/.test(cells(d3[5])[0].className), '没化简完应使用 partial 样式');
     check(d2[3]._tex === '（空）', '空答案应显示（空），实际 ' + d2[3]._tex);
     check(text(d2[6]) === '1 分', '60 秒应显示 1 分，实际 ' + text(d2[6]));
     check(t.dom.byId['detail-empty'].hidden === true, '有记录时不该显示空状态');
+    check(/筛选后 4 条 \/ 全部 4 条/.test(text(t.dom.byId['detail-filter-summary'])),
+        '明细页应有筛选汇总文案，实际: ' + text(t.dom.byId['detail-filter-summary']));
+
+    // ---------- 3b. 明细页筛选 ----------
+    const chipOf = (el) => ({
+        field: (el.dataset && el.dataset.field) || el.getAttribute('data-field'),
+        value: (el.dataset && el.dataset.value) || el.getAttribute('data-value')
+    });
+    const offResultChip = function () {
+        const chip = cells(t.dom.byId['detail-filter'])
+            .flatMap(line => cells(line))
+            .filter(el => chipOf(el).field === 'result' && !/(^|\s)on(\s|$)/.test(el.className))[0];
+        return chip ? String(chipOf(chip).value) : null;
+    };
+    const clickChip = function (box, field, value) {
+        const chip = findChip(box, field, value);
+        check(!!chip, '筛选里应点得到 ' + field + '=' + value);
+        if (chip) (chip.handlers.click || []).forEach(fn => fn({}));
+    };
+    const chipRows = (box) => cells(box).map(line => cells(line).map(chipOf));
+    // 筛选条重绘时 box.innerHTML = '' 会清空 children，所以每点一次都重新取一遍
+    const findChip = (box, field, value) => cells(box)
+        .flatMap(line => cells(line))
+        .filter(el => { const c = chipOf(el); return c.field === field && String(c.value) === String(value); })[0];
+    clickChip(t.dom.byId['detail-filter'], 'result', 'unmerged');
+    let shown = cells(t.dom.byId['detail-body']);
+    check(shown.length === 1, '筛「没化简完」后应只剩 1 条，实际 ' + shown.length);
+    check(text(cells(cells(shown[0])[5])[0]) === '没去括号', '筛选后剩下的是没去括号那条');
+    clickChip(t.dom.byId['detail-filter'], 'kind', 'fraction');
+    shown = cells(t.dom.byId['detail-body']);
+    check(shown.length === 0, '没化简完 + 分数题应没有记录，实际 ' + shown.length);
+    check(t.dom.byId['detail-empty'].hidden === false, '筛选没结果时应显示空提示');
+    check(/没有符合筛选条件/.test(text(t.dom.byId['detail-empty'])),
+        '空提示应说明是筛选导致，实际: ' + text(t.dom.byId['detail-empty']));
+    // 恢复：先点某个未被选中的结果项打开筛选，再点同一个取消，回到「全部」
+    const anyResultChip = function () {
+        const chip = cells(t.dom.byId['detail-filter'])
+            .flatMap(line => cells(line))
+            .filter(el => chipOf(el).field === 'result')[0];
+        return chip ? String(chipOf(chip).value) : null;
+    };
+    const clickChipByKey = function (box, field, key) {
+        const row = cells(box).map(line => cells(line).map(chipOf))
+            .filter(line => line.some(c => c.field === field))[0] || [];
+        const found = row.filter(c => String(c.value) === String(key))[0];
+        const allChips = cells(box).flatMap(line => cells(line));
+        const chip = allChips.filter(el => { const c = chipOf(el); return c.field === field && String(c.value) === String(found ? found.value : ''); })[0];
+        check(!!chip, '筛选里应点得到 ' + field + '=' + key);
+        if (chip) (chip.handlers.click || []).forEach(fn => fn({}));
+    };
+    clickChipByKey(t.dom.byId['detail-filter'], 'result', '');
+    shown = cells(t.dom.byId['detail-body']);
+    check(shown.length === 2, '取消结果筛选后分数筛选仍在，应只剩 2 条分数题，实际 ' + shown.length);
+    check(text(cells(cells(shown[0])[5])[0]) === '独立对', '剩下两条中的第一条应是独立做的分数题，实际 ' + text(cells(cells(shown[0])[5])[0]));
+    clickChipByKey(t.dom.byId['detail-filter'], 'result', 'correct');
+    shown = cells(t.dom.byId['detail-body']);
+    check(shown.length === 1, '独立对 + 分数题应只剩 1 条，实际 ' + shown.length);
+    clickChipByKey(t.dom.byId['detail-filter'], 'result', 'correct');
+    clickChipByKey(t.dom.byId['detail-filter'], 'kind', 'fraction');
+    shown = cells(t.dom.byId['detail-body']);
+    check(shown.length === 4, '清空筛选后应恢复 4 条，实际 ' + shown.length);
+    shown = cells(t.dom.byId['detail-body']);
+    check(shown.length === 4, '全部结果 + 全部题型的显式选择应是 4 条，实际 ' + shown.length);
+    clickChipByKey(t.dom.byId['detail-filter'], 'kind', 'fraction');
+    shown = cells(t.dom.byId['detail-body']);
+    check(shown.length === 2, '只看分数题应剩 2 条（a1、a3），实际 ' + shown.length);
+    check(/筛选后 2 条 \/ 全部 4 条/.test(text(t.dom.byId['detail-filter-summary'])),
+        '只看分数题后明细汇总文本不符，实际 ' + text(t.dom.byId['detail-filter-summary']));
+    check(t.dom.byId['detail-empty'].hidden === true, '有结果时应隐藏空提示');
+    clickChipByKey(t.dom.byId['detail-filter'], 'kind', 'all');     // 恢复全部
 
     // ---------- 4. 返回列表 ----------
     (t.dom.byId['back'].handlers.click || []).forEach(fn => fn({}));
     check(t.dom.byId['list-view'].hidden === false, '返回后应显示列表');
     check(t.dom.byId['detail-view'].hidden === true, '返回后应隐藏明细');
+    check(formatCards(t.dom.byId['summary'])[1] === '记录数=10 条', '明细页的筛选不该影响看板汇总');
+
+    // ---------- 6b. 看板筛选 ----------
+    clickChip(t.dom.byId['list-filter'], 'result', 'correct');
+    let listCards = formatCards(t.dom.byId['summary']);
+    check(listCards[1] === '记录数=6 条', '筛「独立对」后记录数应为 6，实际 ' + listCards[1]);
+    check(listCards[2] === '正确率（提示算对，看解析算错）=100%', '筛选后正确率应为 100%');
+    check(listCards[3] === '独立做对=6 题', '筛选后独立做对应为 6');
+    check(/筛选后 6 条 \/ 全部 10 条/.test(text(t.dom.byId['list-filter-summary'])),
+        '筛选文案不对: ' + text(t.dom.byId['list-filter-summary']));
+    check(listCards[9] === '平均用时=—', '筛选后的平均用时无法准确计算，应显示 —');
+
+    clickChip(t.dom.byId['list-filter'], 'kind', 'fraction');
+    listCards = formatCards(t.dom.byId['summary']);
+    check(listCards[1] === '记录数=2 条', '独立对 + 分数题应只有 2 条，实际 ' + listCards[1]);
+    check(listCards[8] === '分数题（对/总）=2/2', '分数题卡片应跟随筛选，实际 ' + listCards[8]);
+
+    clickChip(t.dom.byId['list-filter'], 'range', 'today');
+    listCards = formatCards(t.dom.byId['summary']);
+    check(listCards[1] === '记录数=0 条', '今天没有独立对的分数题，应为 0 条，实际 ' + listCards[1]);
+
+    clickChip(t.dom.byId['list-filter'], 'result', 'correct');   // 取消结果筛选
+    clickChip(t.dom.byId['list-filter'], 'kind', 'fraction');    // 取消题型筛选
+    clickChip(t.dom.byId['list-filter'], 'range', 'all');        // 回到全部时间
+    listCards = formatCards(t.dom.byId['summary']);
+    check(listCards[1] === '记录数=10 条', '全部取消后应回到 10 条，实际 ' + listCards[1]);
+    check(listCards[9] === '平均用时=15 秒', '没有筛选时平均用时应恢复');
+    check(/筛选后 10 条 \/ 全部 10 条/.test(text(t.dom.byId['list-filter-summary'])),
+        '取消筛选后文案应恢复');
 
     // ---------- 5. 添加学生 ----------
     const getBefore = t.apiCalls.filter(c => c.url === '/api/teacher/students' && !c.opts.method).length;
@@ -319,7 +487,7 @@ const text = (el) => (el ? String(el.textContent) : null);
     check(t.dom.byId['self-view'].hidden === false, '老师自己有记录时应显示「我自己」面板');
     const selfStats = text(t.dom.byId['self-stats']);
     check(/练了 8 题/.test(selfStats), '自练题数不对: ' + selfStats);
-    check(/正确率 71.4%/.test(selfStats), '自练正确率不对: ' + selfStats);
+    check(/正确率 75%/.test(selfStats), '自练正确率不对: ' + selfStats);
     check(/平均用时 12 秒/.test(selfStats), '自练平均用时不对: ' + selfStats);
 
     (t.dom.byId['self-detail'].handlers.click || []).forEach(fn => fn({}));

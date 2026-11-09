@@ -164,7 +164,8 @@
             }
 
             // 一题结束时上报一次；失败只警告，绝不影响做题
-            function reportAttempt(result, revealed, studentAnswer) {
+            // gaveUp：学生主动点了「看解析」。revealed 仍表示「看到了完整解析」，含错两次被动给出。
+            function reportAttempt(result, revealed, studentAnswer, gaveUp) {
                 if (!currentUser || !currentQ || !currentQ.clientId) return;
                 const payload = {
                     clientId: currentQ.clientId,
@@ -176,6 +177,7 @@
                     result,
                     usedHint: hintUsed,
                     revealed: !!revealed,
+                    gaveUp: !!gaveUp,
                     ms: Math.max(0, Date.now() - (currentQ.startedAt || Date.now()))
                 };
                 fetch('/api/attempts', {
@@ -399,18 +401,26 @@
                     fbEl.style.color = 'var(--warn)';
 
                     enterResultMode();
-                    reportAttempt('wrong', true, beforeGiveUp);
+                    reportAttempt('wrong', true, beforeGiveUp, true);
                 } else if (action === "submit") {
                     if (currentInput === "") return;
 
                     const result = evaluateAnswer(currentInput, currentQ.answer);
-                    fbEl.style.color = result.status === 'correct' ? 'var(--ok)' : (result.status === 'error' || result.status === 'wrong' ? 'var(--danger)' : 'var(--warn)');
+                    // 答案等价但形式不标准（没去括号 / 没合并同类项）也算没做对，给黄字提示
+                    const solved = result.status === 'correct' || result.status === 'parentheses' || result.status === 'unmerged';
+                    fbEl.style.color = result.status === 'correct' ? 'var(--ok)' : (solved ? 'var(--warn)' : 'var(--danger)');
 
                     if (result.status === 'correct') {
                         fbEl.textContent = result.msg + " 完整过程在下面，对照检查一下，看完点「下一题」。";
                         reportAttempt('correct', false, currentInput);
                         showSteps(currentInput);
                         enterResultMode();
+                    } else if (solved) {
+                        // 答案等价但没去括号 / 没合并同类项：按没做对处理，直接结束本题登记
+                        showSteps(currentInput);
+                        fbEl.textContent = result.msg + "。本题按未完成登记，完整过程在下面，看完点「下一题」。";
+                        enterResultMode();
+                        reportAttempt(result.status, false, currentInput);
                     } else if (result.status === 'wrong') {
                         wrongCount++;
                         if (wrongCount >= 2) {

@@ -74,8 +74,8 @@ const judge = (student, standard, expected) => {
 
 judge('x/2 + 3/4', 'x/2 + 3/4', 'correct');
 judge('1/2x + 3/4', 'x/2 + 3/4', 'correct');
-judge('x/2 + 2 - x/3 + 1', 'x/6 + 3', 'partial');
-judge('(x+1)/2', 'x/2 + 1/2', 'partial');
+judge('x/2 + 2 - x/3 + 1', 'x/6 + 3', 'unmerged');
+judge('(x+1)/2', 'x/2 + 1/2', 'parentheses');
 judge('x/3 + 1/3', 'x/2 + 1/2', 'wrong');
 judge('1/(x+1)', 'x/2', 'error');
 judge('x/0', 'x/2', 'error');

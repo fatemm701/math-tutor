@@ -5,9 +5,18 @@ const auth = require('../auth');
 
 const router = express.Router();
 
-const RESULTS = ['correct', 'wrong', 'partial', 'error'];
+// parentheses = 答案对但没去括号；unmerged = 答案对但没合并同类项。
+// partial 是旧客户端/旧版本用的，写入时统一归到 unmerged，避免老页面缓存上报被拒。
+const RESULTS = ['correct', 'wrong', 'parentheses', 'unmerged', 'error'];
+const LEGACY_RESULTS = { partial: 'unmerged' };
 const TAGS = ['fraction'];
 const MAX_MS = 6 * 60 * 60 * 1000;
+
+function normalizeResult(value) {
+    if (RESULTS.includes(value)) return value;
+    if (Object.prototype.hasOwnProperty.call(LEGACY_RESULTS, value)) return LEGACY_RESULTS[value];
+    return null;
+}
 
 function text(value, max) {
     return typeof value === 'string' ? value.slice(0, max) : '';
@@ -22,7 +31,7 @@ function normalizeTags(value) {
 router.post('/', auth.requireLogin, (req, res) => {
     const body = req.body || {};
 
-    const result = RESULTS.includes(body.result) ? body.result : null;
+    const result = normalizeResult(body.result);
     if (!result) return res.status(400).json({ success: false, msg: 'result 不合法' });
 
     const level = Number(body.level);
@@ -53,6 +62,8 @@ router.post('/', auth.requireLogin, (req, res) => {
         result,
         usedHint: !!body.usedHint,
         revealed: !!body.revealed,
+        // gaveUp 只在学生主动点「看解析」时为 true；revealed 含义不变（包括错两次被动给解析）
+        gaveUp: !!body.gaveUp,
         ms: Math.max(0, Math.min(Number(body.ms) || 0, MAX_MS)),
         createdAt: Date.now()
     };

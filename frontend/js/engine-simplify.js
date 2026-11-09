@@ -228,8 +228,9 @@
                 const isMerged = stuTermCount <= stdPoly.size;
 
                 if (isEquivalent && !hasParentheses && isMerged) return { status: 'correct', msg: '完全正确！' };
-                if (isEquivalent && hasParentheses) return { status: 'partial', msg: '结果正确，但尚未去括号' };
-                if (isEquivalent && !hasParentheses && !isMerged) return { status: 'partial', msg: '去括号正确，但未合并同类项' };
+                // 两种「答案对但形式不标准」分开报，看板才能分别统计
+                if (isEquivalent && hasParentheses) return { status: 'parentheses', msg: '结果正确，但尚未去括号' };
+                if (isEquivalent && !hasParentheses && !isMerged) return { status: 'unmerged', msg: '去括号正确，但未合并同类项' };
                 return { status: 'wrong', msg: '答案错误，请再检查一下计算' };
             } catch (e) {
                 return { status: 'error', msg: '表达式无法解析，请检查输入格式' };

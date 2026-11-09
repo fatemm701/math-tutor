@@ -248,8 +248,65 @@
         .tag-correct { background: var(--tag-correct-bg); color: var(--tag-correct-fg); }
         .tag-wrong { background: var(--tag-wrong-bg); color: var(--tag-wrong-fg); }
         .tag-hinted { background: var(--tag-hinted-bg); color: var(--tag-hinted-fg); }
+        .tag-partial { background: var(--tag-hinted-bg); color: var(--tag-hinted-fg); }
         .tag-revealed { background: var(--tag-revealed-bg); color: var(--tag-revealed-fg); }
         .tag-fraction { background: var(--tag-fraction-bg); color: var(--tag-fraction-fg); margin-left: 6px; }
+
+        /* 筛选条 */
+        .filter-bar {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin: 0 0 14px;
+            padding: 12px 14px;
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-line);
+            border-radius: 10px;
+        }
+
+        .filter-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .filter-label {
+            flex: 0 0 40px;
+            font-size: 0.78rem;
+            color: var(--text-head);
+        }
+
+        .chip {
+            padding: 3px 10px;
+            font-family: inherit;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            background: var(--surface);
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            cursor: pointer;
+        }
+
+        .chip:hover { border-color: var(--primary); }
+
+        .chip.on {
+            color: #fff;
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+
+        .filter-summary {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin: 0 0 12px;
+            font-size: 0.8rem;
+            color: var(--text-head);
+        }
+
+        .filter-summary strong { color: var(--text); font-weight: 600; }
 
         .empty {
             margin: 0;
@@ -410,6 +467,8 @@
                 <h2>学生</h2>
                 <span class="hint" id="updated"></span>
             </div>
+            <div class="filter-bar" id="list-filter"></div>
+            <p class="filter-summary" id="list-filter-summary"></p>
             <div class="table-wrap">
                 <table>
                     <thead>
@@ -453,6 +512,8 @@
                 <h2 id="detail-title">做题记录</h2>
             </div>
             <p class="hint" id="detail-msg"></p>
+            <div class="filter-bar" id="detail-filter"></div>
+            <p class="filter-summary" id="detail-filter-summary"></p>
             <div class="table-wrap">
                 <table>
                     <thead>
@@ -547,33 +608,211 @@
             return cell;
         }
 
-        // 与后端 bucketOf 保持一致：看解析 > 用提示 > 独立对/错
+        // ---------- 计分口径（与 backend/routes/teacher.js 的 classify 保持一致）----------
+        // 算对：独立对、提示后对；算错：提示后错、没去括号、没合并同类项、格式错、看解析
+        const RESULT_OPTIONS = [
+            { key: '', text: '全部' },
+            { key: 'correct', text: '独立对' },
+            { key: 'hintedCorrect', text: '提示后对' },
+            { key: 'hintedWrong', text: '提示后错' },
+            { key: 'wrong', text: '错' },
+            { key: 'unmerged', text: '没化简完' },
+            { key: 'error', text: '格式错' },
+            { key: 'revealed', text: '看解析' }
+        ];
+        const CORRECT_KEYS = ['correct', 'hintedCorrect'];
+        const PARTIAL_RESULTS = ['parentheses', 'unmerged', 'partial'];
+
+        function isFraction(attempt) {
+            return Array.isArray(attempt.tags) && attempt.tags.includes('fraction');
+        }
+
+        // 旧记录没有 gaveUp：只能靠「看到了完整解析且没做对」近似判定
+        function gaveUpOf(attempt) {
+            if (typeof attempt.gaveUp === 'boolean') return attempt.gaveUp;
+            return attempt.revealed === true && attempt.result !== 'correct';
+        }
+
+        function classify(attempt) {
+            if (gaveUpOf(attempt)) return 'revealed';
+            if (attempt.usedHint) return attempt.result === 'correct' ? 'hintedCorrect' : 'hintedWrong';
+            if (attempt.result === 'correct') return 'correct';
+            if (PARTIAL_RESULTS.includes(attempt.result)) return 'unmerged';
+            if (attempt.result === 'error') return 'error';
+            return 'wrong';
+        }
+
+        const BUCKET_LABEL = {
+            correct: '独立对',
+            hintedCorrect: '提示后对',
+            hintedWrong: '提示后错',
+            wrong: '错',
+            unmerged: '没化简完',
+            error: '格式错',
+            revealed: '看解析'
+        };
+        const BUCKETS = Object.keys(BUCKET_LABEL);
+
+        // 明细里「没化简完」按原始 result 再细分，老师能一眼看出是哪种
         function bucketOf(attempt) {
-            if (attempt.revealed) return { text: '看解析', cls: 'tag-revealed' };
-            if (attempt.usedHint) {
-                return { text: attempt.result === 'correct' ? '提示后对' : '提示后错', cls: 'tag-hinted' };
+            const key = classify(attempt);
+            if (key === 'unmerged') {
+                return attempt.result === 'parentheses'
+                    ? { key, text: '没去括号', cls: 'tag-partial' }
+                    : { key, text: '没合并同类项', cls: 'tag-partial' };
             }
-            if (attempt.result === 'correct') return { text: '独立对', cls: 'tag-correct' };
-            if (attempt.result === 'partial') return { text: '没化简完', cls: 'tag-hinted' };
-            if (attempt.result === 'error') return { text: '格式错', cls: 'tag-hinted' };
-            return { text: '错', cls: 'tag-wrong' };
+            const cls = key === 'correct' ? 'tag-correct'
+                : key === 'revealed' ? 'tag-revealed'
+                    : (key === 'wrong' ? 'tag-wrong' : 'tag-hinted');
+            return { key, text: BUCKET_LABEL[key], cls };
+        }
+
+        // ---------- 筛选 ----------
+        const LEVEL_OPTIONS = [
+            { key: '', text: '全部' },
+            { key: '1', text: '① 入门' },
+            { key: '2', text: '② 基础' },
+            { key: '3', text: '③ 进阶' },
+            { key: '4', text: '④ 挑战' }
+        ];
+        const KIND_OPTIONS = [
+            { key: 'all', text: '全部' },
+            { key: 'fraction', text: '分数题' },
+            { key: 'integer', text: '整数题' }
+        ];
+        const RANGE_OPTIONS = [
+            { key: 'all', text: '全部' },
+            { key: 'week', text: '最近 7 天' },
+            { key: 'today', text: '今天' }
+        ];
+
+        function emptyFilter() { return { result: '', level: '', kind: '', range: 'all' }; }
+        function isFilterActive(f) {
+            return !!(f.result || f.level || f.kind || (f.range && f.range !== 'all'));
+        }
+
+        // 列表页：用后端预先数好的稀疏计数求和，不拉明细
+        function countsOfFilter(filter, allCounts) {
+            const totals = { total: 0 };
+            BUCKETS.forEach(b => { totals[b] = 0; });
+            if (!allCounts) return totals;
+            // 只按非默认值过滤，免得「全部」这两个字被当成一个桶名
+            const active = (v) => (v !== '' && v !== undefined && v !== null && v !== 'all') ? v : null;
+            const range = allCounts[active(filter.range) || 'all'] || {};
+            const buckets = active(filter.result) ? [active(filter.result)] : BUCKETS;
+            const levels = active(filter.level) ? [Number(filter.level)] : [1, 2, 3, 4];
+            const kind = active(filter.kind);
+            buckets.forEach(b => {
+                const byLevel = range[b];
+                if (!byLevel) return;
+                levels.forEach(level => {
+                    const cell = byLevel[String(level)] || byLevel[level];
+                    if (!cell) return;
+                    let n = 0;
+                    if (!kind) n = (cell.fraction || 0) + (cell.integer || 0);
+                    else n = cell[kind] || 0;
+                    totals[b] += n;
+                    totals.total += n;
+                });
+            });
+            return totals;
+        }
+
+        // 明细页：内存里按原始字段过滤
+        function filterAttempts(list, filter) {
+            return (list || []).filter(a => {
+                if (filter.result && classify(a) !== filter.result) return false;
+                const levelStr = a.level === null || a.level === undefined ? '' : String(a.level);
+                if (filter.level && levelStr !== String(filter.level)) return false;
+                if (filter.kind === 'fraction' && !isFraction(a)) return false;
+                if (filter.kind === 'integer' && isFraction(a)) return false;
+                if (filter.range && filter.range !== 'all') {
+                    const span = filter.range === 'today' ? 0 : 7 * 24 * 60 * 60 * 1000;
+                    const floor = filter.range === 'today' ? startOfToday() : (Date.now() - span);
+                    if ((a.createdAt || 0) < floor) return false;
+                }
+                return true;
+            });
+        }
+
+        function startOfToday() {
+            const d = new Date();
+            return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+        }
+
+        // 一组 chip：点同一项等于取消，回到「全部」
+        function renderFilterBar(box, filter, onChange) {
+            box.innerHTML = '';
+            const rows = [
+                { label: '结果', options: RESULT_OPTIONS, field: 'result' },
+                { label: '难度', options: LEVEL_OPTIONS, field: 'level' },
+                { label: '题型', options: KIND_OPTIONS, field: 'kind' },
+                { label: '时间', options: RANGE_OPTIONS, field: 'range' }
+            ];
+            rows.forEach(row => {
+                const line = document.createElement('div');
+                line.className = 'filter-row';
+                const label = document.createElement('span');
+                label.className = 'filter-label';
+                label.textContent = row.label;
+                line.appendChild(label);
+
+                row.options.forEach(opt => {
+                    const active = filter[row.field] === opt.key;
+                    const chip = document.createElement('button');
+                    chip.type = 'button';
+                    chip.className = 'chip' + (active ? ' on' : '');
+                    chip.dataset.field = row.field;
+                    chip.dataset.value = opt.key;
+                    chip.setAttribute('data-field', row.field);
+                    chip.setAttribute('data-value', opt.key);
+                    chip.textContent = opt.text;
+                    chip.addEventListener('click', () => {
+                        if (row.field === 'range') {
+                            filter.range = opt.key || 'all';
+                        } else {
+                            filter[row.field] = (filter[row.field] === opt.key) ? '' : opt.key;
+                        }
+                        onChange();
+                    });
+                    line.appendChild(chip);
+                });
+                box.appendChild(line);
+            });
+        }
+
+        function filterSummaryText(shown, total) {
+            return '筛选后 ' + shown + ' 条 / 全部 ' + total + ' 条';
+        }
+
+        // 「筛选结果：独立对 3 · 提示后对 1 · …」：只列非零的类别
+        function distributionText(totals) {
+            const parts = BUCKETS
+                .filter(b => totals[b] > 0)
+                .map(b => BUCKET_LABEL[b] + ' ' + totals[b]);
+            return parts.length ? '其中 ' + parts.join(' · ') : '没有符合条件的记录';
         }
 
         // ---------- 渲染 ----------
-        function renderSummary(sum) {
+        // totals 来自 countsOfFilter（筛选后的各桶条数）；avgMs 传筛选后学生的用时加权平均，
+        // 筛选把时间范围缩小后平均用时并不精确，所以这里只在「全部时间 + 没有其它筛选」时显示，否则给 —
+        function renderSummary(totals, studentCount, avgMs) {
             const cards = $('summary');
             cards.innerHTML = '';
-            const accuracy = sum.scored ? Math.round((sum.correct / sum.scored) * 1000) / 10 : null;
-            const avgMs = sum.total ? Math.round(sum.ms / sum.total) : 0;
+            const correctCount = CORRECT_KEYS.reduce((n, k) => n + (totals[k] || 0), 0);
+            const accuracy = totals.total ? Math.round((correctCount / totals.total) * 1000) / 10 : null;
+            const hinted = (totals.hintedCorrect || 0) + (totals.hintedWrong || 0);
             const items = [
-                { k: '学生', v: students.length + ' 人' },
-                { k: '总记录', v: sum.total + ' 条' },
-                { k: '正确率（不含提示/看解析）', v: fmtPct(accuracy) },
-                { k: '独立做对', v: sum.correct + ' 题' },
-                { k: '平均用时', v: sum.total ? fmtMs(avgMs) : '—' },
-                { k: '用过提示', v: sum.hinted + ' 题' },
-                { k: '看解析', v: sum.revealed + ' 题' },
-                { k: '分数题（正确/总数）', v: sum.fraction.total ? sum.fraction.correct + '/' + sum.fraction.total : '—' }
+                { k: '学生', v: studentCount + ' 人' },
+                { k: '记录数', v: totals.total + ' 条' },
+                { k: '正确率（提示算对，看解析算错）', v: fmtPct(accuracy) },
+                { k: '独立做对', v: (totals.correct || 0) + ' 题', title: '没用提示、一次做对' },
+                { k: '提示后对', v: (totals.hintedCorrect || 0) + ' 题', title: '点过提示但做对了，算正确' },
+                { k: '错误', v: wrongOf(totals) + ' 题', title: '提示后错、没化简完、格式错、错 共 ' + wrongOf(totals) + ' 题' },
+                { k: '用过提示', v: hinted + ' 题' },
+                { k: '看解析', v: (totals.revealed || 0) + ' 题' },
+                { k: '分数题（对/总）', v: fracText(totals) },
+                { k: '平均用时', v: avgMs }
             ];
             items.forEach(item => {
                 const box = document.createElement('div');
@@ -590,35 +829,78 @@
             });
         }
 
+        function wrongOf(totals) {
+            return (totals.hintedWrong || 0) + (totals.unmerged || 0) + (totals.error || 0) + (totals.wrong || 0);
+        }
+
+        // 「分数题（对/总）」：分母是分数题总数，分子按当前筛选下的算对口径
+        function fracText(totals) {
+            const total = (totals.totalFraction || 0);
+            if (!total) return '—';
+            return (totals.correctFraction || 0) + '/' + total;
+        }
+
+        // ---------- 列表页 ----------
+        const listFilter = emptyFilter();
+
+        // 把每个学生的 counts 按当前筛选条件求和
+        function listTotals() {
+            const totals = { total: 0 };
+            BUCKETS.forEach(b => { totals[b] = 0; });
+            totals.totalFraction = 0;
+            totals.correctFraction = 0;
+            totals.all = students.reduce((n, item) => n + (item.stats.total || 0), 0);
+            students.forEach(item => {
+                const c = countsOfFilter(listFilter, item.counts);
+                BUCKETS.forEach(b => { totals[b] += c[b]; });
+                totals.total += c.total;
+                if (!listFilter.kind || listFilter.kind === 'all' || listFilter.kind === 'fraction') {
+                    // 分数题卡片：筛选结果里的分数题数量（题型选了「整数题」时不显示分数题）
+                    const frac = countsOfFilter(Object.assign({}, listFilter, { kind: 'fraction' }), item.counts);
+                    totals.totalFraction += frac.total;
+                    totals.correctFraction += CORRECT_KEYS.reduce((n, k) => n + frac[k], 0);
+                }
+            });
+            return totals;
+        }
+
+        function refreshListSummary() {
+            const totals = listTotals();
+            renderSummary(totals, students.length, listAvgMs());
+            $('list-filter-summary').textContent = filterSummaryText(totals.total, totals.all)
+                + ' · ' + distributionText(totals);
+        }
+
+        // 平均用时：只有「时间=全部」且没有其它筛选时才等于全量平均，否则 —（后端没按时间分桶存用时）
+        function listAvgMs() {
+            const noFilter = !listFilter.result && !listFilter.level && !listFilter.kind
+                && (!listFilter.range || listFilter.range === 'all');
+            if (!noFilter) return '—';
+            let ms = 0;
+            let total = 0;
+            students.forEach(item => {
+                ms += (item.stats.avgMs || 0) * item.stats.total;
+                total += item.stats.total;
+            });
+            return total ? fmtMs(Math.round(ms / total)) : '—';
+        }
+
         function renderStudents() {
             const body = $('students-body');
             body.innerHTML = '';
-
-            const sum = {
-                total: 0, correct: 0, wrong: 0, hinted: 0, revealed: 0, scored: 0, ms: 0,
-                fraction: { total: 0, correct: 0 }
-            };
             students.forEach(item => {
                 const st = item.stats;
                 const stFrac = st.fraction || {};
-                sum.total += st.total;
-                sum.correct += st.correct;
-                sum.wrong += st.wrong;
-                sum.hinted += st.hinted;
-                sum.revealed += st.revealed;
-                sum.scored += st.scored;
-                sum.ms += (st.avgMs || 0) * st.total;
-                sum.fraction.total += stFrac.total || 0;
-                sum.fraction.correct += stFrac.correct || 0;
-
                 const tr = document.createElement('tr');
                 tr.className = 'clickable';
                 tr.addEventListener('click', () => openDetail(item.user));
 
                 td(tr, item.user.name, 'name');
                 td(tr, st.total, 'num');
-                td(tr, fmtPct(st.accuracy), 'num');
-                td(tr, st.wrong, 'num');
+                const accCell = td(tr, fmtPct(st.accuracy), 'num');
+                accCell.title = '算对 ' + (st.correctCount || 0) + ' / 共 ' + (st.total || 0)
+                    + '（提示后做对算对，看解析算错）';
+                td(tr, wrongOf(st), 'num');
                 td(tr, st.hinted, 'num');
                 td(tr, st.revealed, 'num');
                 td(tr, fmtMs(st.avgMs), 'num');
@@ -636,7 +918,8 @@
                 });
 
                 const frac = st.fraction || {};
-                const fracCell = td(tr, frac.total ? frac.correct + '/' + frac.total : '—', 'num');
+                const fracCorrect = CORRECT_KEYS.reduce((n, k) => n + (frac[k] || 0), 0);
+                const fracCell = td(tr, frac.total ? fracCorrect + '/' + frac.total : '—', 'num');
                 fracCell.title = frac.total
                     ? '分数题：正确率 ' + fmtPct(frac.accuracy) + '，平均 ' + fmtMs(frac.avgMs)
                     : '分数题：还没做过';
@@ -664,17 +947,24 @@
                     : '还没有学生。用下面表单直接添加，或让学生注册时填写你的邀请码。';
             }
 
-            renderSummary(sum);
+            renderFilterBar($('list-filter'), listFilter, onListFilterChange);
+            refreshListSummary();
+        }
+
+        function onListFilterChange() {
+            renderFilterBar($('list-filter'), listFilter, onListFilterChange);
+            refreshListSummary();
         }
 
         function renderAttempts(list) {
+            const shown = filterAttempts(list, detailFilter);
             const body = $('detail-body');
             body.innerHTML = '';
-            list.forEach(a => {
+            shown.forEach(a => {
                 const tr = document.createElement('tr');
                 td(tr, fmtTime(a.createdAt), 'num');
                 const levelCell = td(tr, LEVEL_LABEL[a.level] || String(a.level));
-                if (Array.isArray(a.tags) && a.tags.includes('fraction')) {
+                if (isFraction(a)) {
                     const ftag = document.createElement('span');
                     ftag.className = 'tag tag-fraction';
                     ftag.textContent = '分数';
@@ -694,13 +984,30 @@
                 td(tr, fmtMs(a.ms), 'num');
                 body.appendChild(tr);
             });
-            $('detail-empty').hidden = list.length > 0;
+
+            const totals = { total: 0 };
+            BUCKETS.forEach(b => { totals[b] = 0; });
+            shown.forEach(a => { totals[classify(a)]++; totals.total++; });
+            $('detail-filter-summary').textContent = list.length
+                ? filterSummaryText(shown.length, list.length) + ' · ' + distributionText(totals)
+                : '';
+            $('detail-empty').hidden = shown.length > 0;
+            $('detail-empty').textContent = list.length
+                ? '没有符合筛选条件的记录。'
+                : '这个学生还没有做题记录。';
+        }
+
+        function refreshDetailFilter() {
+            renderFilterBar($('detail-filter'), detailFilter, () => renderAttempts(detailList));
+            renderAttempts(detailList);
         }
 
         // ---------- 数据 ----------
         let detailUser = null;
         let detailSource = 'student';
+        let detailList = [];
         let selfInfo = null;
+        const detailFilter = emptyFilter();
 
         // 老师自己（本账号）的练习记录：单独一块，不进学生统计
         function renderSelf(self) {
@@ -712,7 +1019,8 @@
             }
             const st = selfInfo.stats;
             $('self-stats').textContent = '练了 ' + st.total + ' 题 · 独立做对 ' + st.correct
-                + ' · 错 ' + st.wrong + ' · 提示 ' + st.hinted + ' · 看解析 ' + st.revealed
+                + ' · 提示后对 ' + (st.hintedCorrect || 0)
+                + ' · 错误 ' + wrongOf(st) + ' · 提示 ' + st.hinted + ' · 看解析 ' + st.revealed
                 + ' · 正确率 ' + fmtPct(st.accuracy) + ' · 平均用时 ' + fmtMs(st.avgMs);
             box.hidden = false;
         }
@@ -728,10 +1036,13 @@
             });
             $('updated').textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN', { hour12: false });
             renderStudents();
+            refreshListSummary();
             renderSelf(data.self);
         }
 
         async function openDetail(user, source) {
+            // 筛选条件跨学生保留，但换人看明细时清掉，免得以为「没记录」
+            if (detailUser && detailUser.id !== user.id) Object.assign(detailFilter, emptyFilter());
             detailUser = user;
             detailSource = source === 'self' ? 'self' : 'student';
             $('list-view').hidden = true;
@@ -741,6 +1052,8 @@
             $('detail-body').innerHTML = '';
             $('detail-empty').hidden = true;
             $('detail-msg').textContent = '加载中…';
+            detailList = [];
+            renderFilterBar($('detail-filter'), detailFilter, refreshDetailFilter);
 
             // 老师自己的记录走 /api/attempts/mine，学生的走老师专属接口
             const url = detailSource === 'self'
@@ -749,11 +1062,11 @@
 
             try {
                 const data = await api(url);
-                const list = data.attempts || [];
-                $('detail-msg').textContent = list.length
-                    ? '最近 ' + list.length + ' 条，新的在上面（同一道题只记一次）'
+                detailList = data.attempts || [];
+                $('detail-msg').textContent = detailList.length
+                    ? '最近 ' + detailList.length + ' 条，新的在上面（同一道题只记一次）'
                     : '';
-                renderAttempts(list);
+                refreshDetailFilter();
             } catch (err) {
                 $('detail-msg').textContent = '加载失败：' + err.message;
             }

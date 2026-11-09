@@ -188,8 +188,8 @@ const judge = (student, question, expected) => {
 };
 judge('-2x - 10', '2(x - 3) - 4(x + 1)', 'correct');
 judge('  6x  -  10  ', '2(x - 3) - 4(x + 1) + 8x', 'correct');
-judge('2x - 6 - 4x - 4', '2(x - 3) - 4(x + 1)', 'partial');       // 未合并
-judge('2(x - 3) - 4(x + 1)', '2(x - 3) - 4(x + 1)', 'partial');   // 未去括号
+judge('2x - 6 - 4x - 4', '2(x - 3) - 4(x + 1)', 'unmerged');       // 未合并同类项
+judge('2(x - 3) - 4(x + 1)', '2(x - 3) - 4(x + 1)', 'parentheses');   // 未去括号
 judge('2x - 6 - 4x + 4', '2(x - 3) - 4(x + 1)', 'wrong');         // 变号错
 judge('-4x - 20', '2(x - 3) - 4(x + 1)', 'wrong');                // 差 2 倍
 judge('2x - 3 - 4x + 1', '2(x - 3) - 4(x + 1)', 'wrong');         // 漏乘
@@ -198,7 +198,8 @@ judge('x +', '2(x - 3) - 4(x + 1)', 'error');                     // 语法错
 judge('-x', '3 - (x + 3)', 'correct');
 judge('3ab - 2a + 5b', 'a(3b) - 2a + 5b', 'correct');
 judge('x/2 - 1', '1/2(x + 4) - 3', 'correct');
-judge('(x + 4)/2 - 3', '1/2(x + 4) - 3', 'partial');   // 未去括号
+judge('(x + 4)/2 - 3', '1/2(x + 4) - 3', 'parentheses');   // 未去括号
+judge('x/2 + 2 - 3', '1/2(x + 4) - 3', 'unmerged');        // 等价但没合并常数
 judge('x/2 + 1', '1/2(x + 4) - 3', 'wrong');           // 常数算错
 
 // ---------- 4. 提示分类 ----------
