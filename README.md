@@ -17,11 +17,20 @@
 - 判卷分「独立对 / 提示后对 / 提示后错 / 错 / 没化简完（没去括号、没合并同类项）/ 格式错 / 看解析」几档
 - 计分口径：看了提示仍算对（没给答案），主动点「看解析」算错；答错两次后自动弹出解析不算「看解析」
 
+**一元一次方程练习** `frontend/equations.html`（结构）+ `frontend/js/practice-equations.js`（交互）
+
+- 与整式化简是两个独立页面，顶栏互相切换（两套引擎互不干扰，缓存也各存各的）
+- 4 个难度：① 入门 `x + a = b`、`a − x = b`、`ax = b`；② 基础未知数在两边 `ax + b = cx + d`；③ 进阶带括号 `a(x + b) = c(x + d)`、`a(x + b) + c = dx + e`；④ 挑战必须带数字分母（`(x ± a)/m`、`1/2(x + 3)` 等）
+- 分步解析固定按「去分母 → 去括号 → 移项 → 合并同类项 → 化系数为一」推进，每一步都是等价变形，并附一句这步在做什么（如「两边同乘 6」「移过去的项要变号」）
+- 判题：任意等价写法都算对（`x = 4`、`4`、`4 = x`、`x = 2/4` 都行）；同解但没化到 `x = …`（如写 `2x = 8`）判「对，但还没化系数为一」；小数、语法错按格式错处理
+- 提示按题面结构给：有分母先讲去分母、有括号讲变号、未知数在两边讲移项
+- 软键盘与化简页一致，多一个 `=` 键；分数同样用上下分式显示
+
 **教师看板** `frontend/teacher.html`
 
-- 汇总卡片 + 学生表格：题数、正确率（提示算对、看解析算错）、独立做对数、提示后对数、错误数、用提示数、看解析数、平均用时、最后活跃、四档分布、分数题正确/总数
-- 列表页与明细页都有筛选条：按结果（独立对/提示后对/提示后错/错/没化简完/格式错/看解析）、难度、分数题/整数题、时间（今天/最近 7 天/全部）组合筛选，再点一次同一项取消
-- 点学生看最近 100 条明细
+- 汇总卡片 + 学生表格：题数、正确率（提示算对、看解析算错）、独立做对数、提示后对数、错误数、用提示数、看解析数、平均用时、最后活跃、四档分布、分数题正确/总数、方程题正确/总数
+- 列表页与明细页都有筛选条：按结果（独立对/提示后对/提示后错/错/没化简完/格式错/看解析）、难度、题型（分数题/整数题/方程题/化简题）、时间（今天/最近 7 天/全部）组合筛选，再点一次同一项取消
+- 点学生看最近 100 条明细（明细里带「题型」列，能分清是化简还是方程）
 - 添加学生账号；「我自己」面板单独统计老师本人的练习，不混入学生数据
 
 **学生自查**（同一页 `frontend/teacher.html`，练习页顶栏「看板」对登录用户都可见）
@@ -40,7 +49,7 @@
 
 | 层 | 实现 |
 |---|---|
-| 前端 | 页面 + 模块化原生 JS；基础多项式在 `frontend/js/math-core.js`，出题/判题/解析在 `frontend/js/engine-simplify.js`，渲染与交互在 `frontend/js/practice.js`；KaTeX、mathjs 放在 `frontend/vendor/`，**不依赖 CDN** |
+| 前端 | 页面 + 模块化原生 JS；基础多项式在 `frontend/js/math-core.js`，括号树在 `frontend/js/poly-tree.js`，两套题型引擎分别是 `frontend/js/engine-simplify.js`（整式化简）和 `frontend/js/equation-engine.js`（一元一次方程），渲染与交互在 `frontend/js/practice.js` / `frontend/js/practice-equations.js`；KaTeX、mathjs 放在 `frontend/vendor/`，**不依赖 CDN** |
 | 后端 | Node.js 22 + Express 5，只做静态托管 + 认证 + 记录读写，**不做数学计算** |
 | 存储 | 单个 JSON 文件 `data/db.json`（先写临时文件再 rename，原子替换；无文件锁，只支持单实例） |
 | 部署 | Docker / Docker Compose，非 root（uid 1000）运行，内置 healthcheck |
@@ -56,17 +65,22 @@ backend/
   routes/              auth / attempts / teacher 三组接口
 frontend/
   index.html           登录 / 注册
-  practice.html        练习页结构（软键盘、题目/解析面板）
-  css/practice.css     练习页样式
+  practice.html        整式化简练习页结构（软键盘、题目/解析面板）
+  equations.html       一元一次方程练习页结构
+  css/practice.css     练习页样式（两个练习页共用）
   js/
     math-core.js       多项式解析、展开、格式化；有理数系数（纯计算）
+    poly-tree.js       「项 -> 括号 -> 项」树：去括号、合并同类项（两套引擎共用）
     engine-simplify.js 整式化简：出题、判题、分步解析、提示
-    practice.js        渲染、键盘、缓存、上报
+    equation-engine.js 一元一次方程：出题、判题、分步解析、提示
+    practice.js        化简页渲染、键盘、缓存、上报
+    practice-equations.js 方程页渲染、键盘、缓存、上报
   teacher.html         教师看板
   vendor/              katex、mathjs 及字体（离线可用）
 test/
   engine.test.js       出题/判题引擎穷举验证
   fraction.test.js     分数系数：有理数运算、解析、判等、步骤、判卷
+  equation.test.js     一元一次方程：出题质量、分步解析、判题、提示
   ui.smoke.js          练习页交互冒烟（自建最小 DOM 桩）
   auth.smoke.js        登录注册页冒烟
   teacher.smoke.js     看板冒烟
@@ -101,22 +115,25 @@ $env:TEACHER_INVITE='换成你自己的口令'; npm start
 npm test
 ```
 
-六个套件串行执行，任一失败即非 0 退出：
+七个套件串行执行，任一失败即非 0 退出：
 
 | 套件 | 覆盖内容 |
 |---|---|
-| `engine.test.js` | 直接加载 `math-core.js` + `engine-simplify.js`，出题/判题/解析穷举断言，含分数题标签与步骤、④ 档 x/y 双变量（约 23830 条） |
+| `engine.test.js` | 直接加载 `math-core.js` + `poly-tree.js` + `engine-simplify.js`，出题/判题/解析穷举断言，含分数题标签与步骤、④ 档 x/y 双变量（约 23830 条） |
 | `fraction.test.js` | 分数系数：有理数规范化/四则/乘方、解析、格式化、判等、分步解析、判卷、四档随机分数题生成，以及上下分式 LaTeX 转换（约 3360 条） |
-| `ui.smoke.js` | 加载 `practice.js`：渲染、提示、答对/错两次/看解析的解析展示、锁键盘、下一题、分数标签与 `/` 输入、`x`/`y` 斜体键与「清空」键、夜间模式开关（默认亮色、切换、记住、重进恢复） |
+| `equation.test.js` | 一元一次方程：四档随机题的题面质量与解的唯一性（④ 档必含分母）、分步解析逐步同解且末步为 `x = 答案`、固定样例步骤、判题分支（含 `x = -3` 负数解、`2x = 8` 判「没化系数为一」、小数/语法错）、提示分类、`toLatexText` 带等号 |
+| `ui.smoke.js` | 加载 `practice.js` 与 `practice-equations.js`：渲染、提示、答对/错两次/看解析的解析展示、锁键盘、下一题、分数标签与 `/` 输入、`x`/`y` 斜体键与「清空」键、等号键、夜间模式开关（默认亮色、切换、记住、重进恢复） |
 | `auth.smoke.js` | 登录注册页：角色切换、字段可见性、提交字段名、跳转 |
-| `teacher.smoke.js` | 老师的看板渲染、分数列/汇总卡/明细标签与详情切换、列表与明细筛选、夜间模式开关；学生进来看到的「我的练习」汇总/筛选/明细/返回 |
-| `api.test.js` | 86 条接口断言（真实起服务 + 临时数据目录），含 tags 过滤/去重、分数统计、只读自己汇总的越权防护 |
+| `teacher.smoke.js` | 老师的看板渲染、分数列/方程列/汇总卡/明细标签与详情切换、列表与明细筛选（含题型）、夜间模式开关；学生进来看到的「我的练习」汇总/筛选/明细/返回 |
+| `api.test.js` | 140 条接口断言（真实起服务 + 临时数据目录），含 tags 过滤/去重、分数统计、`topic` 题型统计与 `byTopic` 归类、只读自己汇总的越权防护 |
 
-页面测试用最小 DOM 桩跑 Node，不需要浏览器；加载 `frontend/js/practice.js` 和 `frontend/vendor/math.js`，与浏览器实际一致。
+页面测试用最小 DOM 桩跑 Node，不需要浏览器；加载 `frontend/js/practice.js`（或 `practice-equations.js`）和 `frontend/vendor/math.js`，与浏览器实际一致。
 
 > 分数系数题已接入练习页：软键盘有 `/`，②-④ 会随机混入分数题并带「分数」标签；分数表达式在题目、输入和解析中按上下分式显示。教师看板按标签单独统计分数题（正确率按「提示算对、看解析算错」计算）。
 >
 > ④ 挑战档统一用 `x`、`y` 两个字母（分数题同样如此）。改版前生成、已存档的 `a`/`b` 题仍能正常显示和判分——`math-core.js` 的变量顺序是 `x`、`y`、`a`、`b`，后两个只为兼容旧记录保留。
+>
+> 一元一次方程页的题目同样只用一个字母 `x`；判题时学生写 `x = 4`、`4`、`4 = x`、`x = 8/2` 都算对（小数也可以，会先换成分数再比），写成 `2x = 8` 这种同解但没化到 `x = …` 的形式会提示「还没化系数为一」。
 
 ## 部署
 
@@ -135,7 +152,7 @@ POST /api/auth/login         { name, password }
 POST /api/auth/logout
 GET  /api/auth/me
 POST /api/attempts           { clientId, level, question, answer, studentAnswer,
-                               result, usedHint, revealed, tags?, ms }
+                               result, usedHint, revealed, tags?, topic?, ms }
 GET  /api/attempts/mine?limit=20
 GET  /api/attempts/mine/summary            只看自己的汇总 + 筛选计数（学生自查用）
 GET  /api/teacher/students
@@ -145,8 +162,9 @@ POST /api/teacher/students   { name, password }
 
 `result` 取值 `correct` / `wrong` / `parentheses`（答案对但没去括号）/ `unmerged`（答案对但没合并同类项）/ `error`；旧客户端的 `partial` 写入时自动归到 `unmerged`。可选 `gaveUp: true` 表示学生主动点了「看解析」（用来把「看解析」和「错两次被动给解析」分开计分）。
 `tags` 目前只接受 `fraction`（用于区分分数系数题，未知标签会被静默丢弃）；带同一个 `clientId` 重复上报只记一次。
+`topic` 取值 `simplify` / `equation`，用来区分整式化简和一元一次方程；不传或传了未知值时按 `simplify` 统计（旧客户端和老数据自动落入这一档）。看板筛选计数 `counts[范围][结果][难度]` 的叶节点是 `{ fraction, integer, equation, equationFraction }`：`fraction`/`integer` 只统计化简题，`equation` 是方程题总数，`equationFraction` 是其中带分数标签的子集；`stats.byTopic` 则是按题型分开的完整统计。
 所有响应统一为 `{ success: true, data }` 或 `{ success: false, msg }`。
 
 ## 说明
 
-个人教学用途，未做开源授权。题库与判题逻辑在 `frontend/js/engine-simplify.js`（基础多项式在 `math-core.js`），页面交互在 `frontend/js/practice.js`。
+个人教学用途，未做开源授权。题库与判题逻辑在 `frontend/js/engine-simplify.js`（整式化简）和 `frontend/js/equation-engine.js`（一元一次方程），基础多项式在 `math-core.js`，两套引擎共用的括号树在 `poly-tree.js`，页面交互在 `frontend/js/practice.js` / `frontend/js/practice-equations.js`。

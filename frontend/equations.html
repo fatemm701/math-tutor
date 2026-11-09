@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>一元一次方程练习</title>
+    <!-- 夜间模式：第一帧之前就把 data-theme 挂到 <html> 上，避免先闪一下白底 -->
+    <script>
+        try {
+            if (localStorage.getItem('poly-theme') === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        } catch (e) { /* 隐私模式下 localStorage 不可用，就用亮色 */ }
+    </script>
+    <!-- 本地资源：不依赖外网 CDN，学生设备只要连得上服务器就能加载 -->
+    <link rel="stylesheet" href="vendor/katex/katex.min.css">
+    <link rel="stylesheet" href="css/practice.css">
+    <script src="vendor/katex/katex.min.js"></script>
+    <script src="vendor/math.js"></script>
+
+    <script src="js/math-core.js"></script>
+    <script src="js/poly-tree.js"></script>
+    <script src="js/equation-engine.js"></script>
+</head>
+
+<body>
+
+    <div class="topbar">
+        <span class="who" id="who">加载中…</span>
+        <span class="actions">
+            <a href="practice.html">整式化简</a>
+            <a id="board-link" href="teacher.html" hidden>看板</a>
+            <button type="button" id="theme-toggle" title="夜间模式" aria-pressed="false">🌙</button>
+            <button type="button" id="logout">退出</button>
+        </span>
+    </div>
+
+    <div class="container">
+        <!-- 难度选择 -->
+        <div class="level-tabs" id="level-tabs">
+            <button class="level-tab" data-level="1">① 入门</button>
+            <button class="level-tab" data-level="2">② 基础</button>
+            <button class="level-tab" data-level="3">③ 进阶</button>
+            <button class="level-tab" data-level="4">④ 挑战</button>
+        </div>
+
+        <div class="display-board">
+            <div class="question-label" id="level-label">当前题目<span id="q-tag" class="tag tag-fraction" hidden>分数</span></div>
+            <!-- 方程和化简是两种题型，标题前加一句「解方程」帮学生一眼分清练的是什么 -->
+            <div class="eq-question-line"><span class="eq-prefix">解方程：</span><span id="question-display"></span></div>
+            <div class="question-label" style="margin-top: 15px;">你的答案</div>
+            <div id="input-display" style="color: var(--primary); min-height: 35px;"></div>
+            <div id="feedback-display" class="feedback"></div>
+            <div id="hint-display" class="hint-panel" hidden></div>
+            <div id="steps-display" class="steps-panel" hidden></div>
+        </div>
+
+        <div class="keyboard" id="keyboard">
+            <!-- 第一排 -->
+            <div class="key" data-val="7">7</div>
+            <div class="key" data-val="8">8</div>
+            <div class="key" data-val="9">9</div>
+            <div class="key" data-val="+">+</div>
+            <div class="key" data-val="/">/</div>
+
+            <!-- 第二排 -->
+            <div class="key" data-val="4">4</div>
+            <div class="key" data-val="5">5</div>
+            <div class="key" data-val="6">6</div>
+            <div class="key" data-val="-">-</div>
+            <div class="key" data-val="^2">²</div>
+
+            <!-- 第三排 -->
+            <div class="key" data-val="1">1</div>
+            <div class="key" data-val="2">2</div>
+            <div class="key" data-val="3">3</div>
+            <div class="key" data-val="*">×</div>
+            <div class="key" data-val="^3">³</div>
+
+            <!-- 第四排：整式化简页的「0、字母、括号」原样保留，只在末尾补一个等号 -->
+            <div class="key" data-val="0">0</div>
+            <div class="key var" data-val="x">x</div>
+            <div class="key var" data-val="y">y</div>
+            <div class="key" data-val="(">(</div>
+            <div class="key" data-val=")">)</div>
+            <div class="key action eq-equals" data-val="=">=</div>
+
+            <!-- 第五排：清空、退格、提示、看解析、提交 -->
+            <div class="key action" data-action="clear">清空</div>
+            <div class="key action" data-action="backspace">退格</div>
+            <div class="key action" data-action="hint">提示</div>
+            <div class="key action" data-action="giveup" style="color: #EF4444;">看解析</div>
+            <div class="key submit" data-action="submit">提交答案</div>
+        </div>
+    </div>
+    <script src="js/practice-equations.js"></script>
+</body>
+
+</html>

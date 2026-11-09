@@ -11,6 +11,8 @@ const router = express.Router();
 const RESULTS = ['correct', 'wrong', 'parentheses', 'unmerged', 'error'];
 const LEGACY_RESULTS = { partial: 'unmerged' };
 const TAGS = ['fraction'];
+// 题型：整式化简 / 一元一次方程。旧客户端不带 topic，写入时存 null，统计里按化简算。
+const TOPICS = ['simplify', 'equation'];
 const MAX_MS = 6 * 60 * 60 * 1000;
 
 function normalizeResult(value) {
@@ -27,6 +29,12 @@ function text(value, max) {
 function normalizeTags(value) {
     if (!Array.isArray(value)) return [];
     return [...new Set(value.filter(tag => TAGS.includes(tag)))].slice(0, 5);
+}
+
+// 题型只接受白名单，缺省或非法值一律存 null（统计时回落成化简）
+function normalizeTopic(value) {
+    if (TOPICS.includes(value)) return value;
+    return null;
 }
 
 router.post('/', auth.requireLogin, (req, res) => {
@@ -56,6 +64,7 @@ router.post('/', auth.requireLogin, (req, res) => {
         userId: req.user.id,
         clientId,
         level,
+        topic: normalizeTopic(body.topic),
         tags: normalizeTags(body.tags),
         question,
         answer: text(body.answer, 200).trim(),

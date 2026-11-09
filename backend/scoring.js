@@ -10,9 +10,15 @@ const CORRECT_BUCKETS = ['correct', 'hintedCorrect'];
 // 新记录用 result 区分「没去括号（parentheses）」和「没合并同类项（unmerged）」；
 // 旧记录的 partial 分不出是哪一种，历史数据只能统一按 unmerged 计。
 const PARTIAL_RESULTS = ['parentheses', 'unmerged', 'partial'];
+// 题型：旧记录没有 topic 字段，一律按化简算，保证历史数据口径不变
+const TOPICS = ['simplify', 'equation'];
 
 function isFraction(attempt) {
     return Array.isArray(attempt.tags) && attempt.tags.includes('fraction');
+}
+
+function topicOf(attempt) {
+    return attempt.topic === 'equation' ? 'equation' : 'simplify';
 }
 
 // 旧记录没有 gaveUp 字段：只能靠「看到了完整解析且没做对」近似判定是主动看的
@@ -54,10 +60,17 @@ function summarize(list) {
     const stats = emptyBucketStats();
     stats.lastAt = null;
     stats.fraction = emptyBucketStats();
+    // 题型分表：化简 / 方程各一份，计分方式与总表完全一致
+    stats.byTopic = {};
+    TOPICS.forEach(topic => {
+        stats.byTopic[topic] = emptyBucketStats();
+        stats.byTopic[topic].lastAt = null;
+    });
     stats.byLevel = [1, 2, 3, 4].map(level => ({ level, total: 0, correct: 0, avgMs: 0, accuracy: null }));
 
     let totalMs = 0;
     let fractionMs = 0;
+    const topicMs = { simplify: 0, equation: 0 };
     const levelMs = { 1: 0, 2: 0, 3: 0, 4: 0 };
 
     list.forEach(a => {
@@ -76,6 +89,15 @@ function summarize(list) {
             fractionMs += ms;
         }
 
+        // 题型分表：同一条记录按它自己的分类计入，两边加起来等于总表
+        const topic = topicOf(a);
+        stats.byTopic[topic].total++;
+        stats.byTopic[topic][bucket]++;
+        topicMs[topic] += ms;
+        if (!stats.byTopic[topic].lastAt || a.createdAt > stats.byTopic[topic].lastAt) {
+            stats.byTopic[topic].lastAt = a.createdAt;
+        }
+
         const row = stats.byLevel.find(r => r.level === a.level);
         if (row) {
             row.total++;
@@ -87,6 +109,7 @@ function summarize(list) {
 
     finishBuckets(stats, totalMs);
     finishBuckets(stats.fraction, fractionMs);
+    TOPICS.forEach(topic => finishBuckets(stats.byTopic[topic], topicMs[topic]));
     stats.byLevel.forEach(row => {
         row.avgMs = row.total ? Math.round(levelMs[row.level] / row.total) : 0;
         row.accuracy = row.total ? Math.round((row.correct / row.total) * 1000) / 10 : null;
@@ -97,7 +120,10 @@ function summarize(list) {
 
 // ---------- 筛选用的稀疏计数 ----------
 // 看板要在「结果 × 难度 × 题型 × 时间范围」上组合筛选，又不想每次都拉全量明细，
-// 所以这里按桶预先数好：counts[范围][结果][难度][fraction|integer] = 条数。
+// 所以这里按桶预先数好：counts[范围][结果][难度][fraction|integer|equation|equationFraction] = 条数。
+// 化简题照旧只落在 fraction / integer（按有没有「分数」标签拆）；方程题只落在 equation，
+// 其中带「分数」标签的再额外落一份 equationFraction —— 它是 equation 的子集，不是另算一类。
+// 于是「全部」= fraction + integer + equation，「分数题」= fraction + equationFraction。
 // 时间范围在服务端算好，避免浏览器时区和服务端对不齐。
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -121,7 +147,7 @@ function emptyCounts() {
         BUCKETS.forEach(bucket => {
             counts[range][bucket] = {};
             [1, 2, 3, 4].forEach(level => {
-                counts[range][bucket][level] = { fraction: 0, integer: 0 };
+                counts[range][bucket][level] = { fraction: 0, integer: 0, equation: 0, equationFraction: 0 };
             });
         });
     });
@@ -135,8 +161,16 @@ function buildCounts(list, now) {
         if (![1, 2, 3, 4].includes(a.level)) return;
         const bucket = classify(a);
         const kind = isFraction(a) ? 'fraction' : 'integer';
+        const isEquation = topicOf(a) === 'equation';
         rangeKeys(a.createdAt || 0, todayStart, now).forEach(range => {
-            stats[range][bucket][a.level][kind]++;
+            const cell = stats[range][bucket][a.level];
+            // 方程题不计入化简题的 fraction / integer，旧记录（无 topic）照旧走下面这一行
+            if (isEquation) {
+                cell.equation++;
+                if (kind === 'fraction') cell.equationFraction++;
+            } else {
+                cell[kind]++;
+            }
         });
     });
     return stats;
@@ -146,8 +180,10 @@ module.exports = {
     BUCKETS,
     CORRECT_BUCKETS,
     PARTIAL_RESULTS,
+    TOPICS,
     DAY_MS,
     isFraction,
+    topicOf,
     gaveUpOf,
     classify,
     isCorrectBucket,
