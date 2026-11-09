@@ -5,6 +5,10 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
+
+// 页面里的样表 / 脚本引用带 ?v=<提交号>（scripts/stamp-assets.js 写入，值随发版变），
+// 所有按路径比对的断言都先过一遍这个函数，别把版本号也当成路径的一部分
+const stripVer = (u) => String(u).replace(/[?#].*$/, '');
 // 用浏览器实际加载的那份 mathjs（frontend/vendor/math.js），保证测试和线上一致
 const math = require(path.join(root, 'frontend/vendor/math.js'));
 const createMathCore = require(path.join(root, 'frontend/js/math-core.js'));
@@ -167,8 +171,8 @@ function navFromHtml(html) {
         links,
         bodyClass: (bodyTag.match(/class="([^"]*)"/) || [])[1] || '',
         bodyAuth: (bodyTag.match(/data-auth="([^"]*)"/) || [])[1] || null,
-        headScripts: [...(html.slice(0, html.indexOf('</head>')).matchAll(/<script\s+src="([^"]+)"><\/script>/g))].map(x => x[1]),
-        headLinks: [...(html.slice(0, html.indexOf('</head>')).matchAll(/<link\b[^>]*href="([^"]+)"/g))].map(x => x[1])
+        headScripts: [...(html.slice(0, html.indexOf('</head>')).matchAll(/<script\s+src="([^"]+)"><\/script>/g))].map(x => stripVer(x[1])),
+        headLinks: [...(html.slice(0, html.indexOf('</head>')).matchAll(/<link\b[^>]*href="([^"]+)"/g))].map(x => stripVer(x[1]))
     };
 }
 
@@ -1108,7 +1112,8 @@ if (!equationsHtmlSrc) {
     // head 里按顺序引入 math-core → poly-tree → equation-engine，body 末尾再引页面脚本
     const headEnd = equationsHtmlSrc.indexOf('</head>');
     const headBlock = headEnd < 0 ? '' : equationsHtmlSrc.slice(0, headEnd);
-    const headScripts = [...headBlock.matchAll(/<script\s+src="([^"]+)"><\/script>/g)].map(m => m[1]);
+    // 去版本号后比原标题名（math-core.js / app-nav.css 等），版本号是本机构建痕迹，不参与语义判断
+    const headScripts = [...headBlock.matchAll(/<script\s+src="([^"]+)"><\/script>/g)].map(m => stripVer(m[1]));
     const need = ['js/math-core.js', 'js/poly-tree.js', 'js/equation-engine.js'];
     const positions = need.map(s => headScripts.indexOf(s));
     eqCheck(positions.every(p => p >= 0),
@@ -1119,10 +1124,11 @@ if (!equationsHtmlSrc) {
     eqCheck(mathJsPos >= 0 && mathJsPos < positions[0], 'math.js 应在 math-core.js 之前加载');
     const katexPos = headScripts.indexOf('vendor/katex/katex.min.js');
     eqCheck(katexPos >= 0 && katexPos < positions[0], 'katex.min.js 应在 math-core.js 之前加载');
-    const allScripts = [...equationsHtmlSrc.matchAll(/<script\s+src="([^"]+)"><\/script>/g)].map(m => m[1]);
+    const allScripts = [...equationsHtmlSrc.matchAll(/<script\s+src="([^"]+)"><\/script>/g)].map(m => stripVer(m[1]));
     eqCheck(allScripts.indexOf('js/practice-equations.js') > allScripts.indexOf('js/equation-engine.js'),
         'practice-equations.js 应在 equation-engine.js 之后加载（body 末尾）');
-    eqCheck(/href="vendor\/katex\/katex\.min\.css"/.test(headBlock) && /href="css\/practice\.css"/.test(headBlock),
+    eqCheck(/href="vendor\/katex\/katex\.min\.css"/.test(headBlock)
+        && /href="css\/practice\.css(?:\?[^"]*)?"/.test(headBlock),
         'equations.html 应复用 practice.css 与 KaTeX 样式');
 
     // 内联脚本只允许「夜间模式」那一段
@@ -1220,10 +1226,10 @@ PAGES.forEach(page => {
     // 1. 资源引用：样式和脚本都要引，否则侧边栏在页面上是不可用 / 不可交互的
     eqCheck(nav.headLinks.includes('css/app-nav.css'),
         tag + '应在 <head> 引用 css/app-nav.css，实际: ' + nav.headLinks.join(', '));
-    eqCheck(/<script\s+src="js\/app-nav\.js"><\/script>/.test(page.html),
+    eqCheck(/<script\s+src="js\/app-nav\.js(?:\?[^"]*)?"><\/script>/.test(page.html),
         tag + '应引用 js/app-nav.js');
     // 侧边栏脚本要在页面脚本之前加载（页面脚本启动时可能依赖侧边栏已就位）
-    const navJsPos = page.html.indexOf('js/app-nav.js');
+    const navJsPos = page.html.search(/<script\s+src="js\/app-nav\.js(?:\?[^"]*)?"/);
     const pageScript = page.here === 'simplify' ? 'js/practice.js' : 'js/practice-equations.js';
     eqCheck(navJsPos >= 0 && page.html.indexOf(pageScript) > navJsPos,
         tag + 'app-nav.js 应在 ' + pageScript + ' 之前加载');
@@ -1373,6 +1379,7 @@ PAGES.forEach(page => {
     const lastKey = page.html.indexOf('data-action="submit"', kStart);
     const scriptSrc = firstScript < 0 ? null
         : ((page.html.slice(firstScript).match(/<script\s+src="([^"]+)"/) || [])[1] || '(内联脚本)');
+    const scriptSrcPath = scriptSrc ? stripVer(scriptSrc) : scriptSrc;
     // 用 submit 键的真实位置比较：截断点必须落在最后一个按键之后
     eqCheck(firstScript > lastKey,
         '[' + page.label + '] id="keyboard" 之后第一个 <script> 必须晚于提交键，'
@@ -1383,10 +1390,12 @@ PAGES.forEach(page => {
     eqCheck(innerScript < 0,
         '[' + page.label + '] 软键盘块内（#keyboard 到 </main> 之间）不应出现 <script>，'
         + '否则 keysFromHtml 会把按键解析截断；实际出现在块内偏移 ' + innerScript);
-    eqCheck(scriptSrc === 'js/app-nav.js',
+    eqCheck(scriptSrcPath === 'js/app-nav.js',
         '[' + page.label + '] id="keyboard" 之后第一个 <script> 应是侧边栏脚本 js/app-nav.js，实际: ' + scriptSrc);
     // 页面脚本必须在这个截断点之后（否则它会被当成软键盘块的一部分，解析必然出错）
-    const pageScriptPos = page.html.indexOf('<script src="' + page.script + '">');
+    // 页面脚本引用可能带 ?v=，用正则定位而不是拼字符串
+    const pageScriptMatch = page.html.match(new RegExp('<script\\s+src="' + page.script.replace(/[.]/g, '\\.') + '(?:\\?[^"]*)?"'));
+    const pageScriptPos = pageScriptMatch ? pageScriptMatch.index : -1;
     eqCheck(pageScriptPos > firstScript,
         '[' + page.label + '] 页面脚本 ' + page.script + ' 应在截断点之后加载，实际位置: ' + pageScriptPos
         + '（截断点 ' + firstScript + '）');

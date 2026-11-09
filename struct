@@ -32,7 +32,10 @@ poly-drill/
 │  ├─ nav.smoke.js       # 左侧导航冒烟（收起/分组记忆、窄屏抽屉、当前页高亮、访客/登录态）
 │  ├─ auth.smoke.js      # 登录注册页冒烟
 │  ├─ teacher.smoke.js   # 看板冒烟（老师视角 + 学生「我的练习」视角，含方程列与题型筛选）
+│  ├─ asset-version.test.js  # 页面资源版本号自检（css/js 都带 ?v=提交号、四页一致）
 │  └─ api.test.js        # 接口测试（真实起服务、临时 DATA_DIR，含 topic 统计）
+├─ scripts/
+│  └─ stamp-assets.js    # 给四个页面的本地 css/js 引用打 ?v=<提交号>（npm run stamp / stamp:check）
 ├─ data/
 │  └─ db.json            # 运行时生成，已 gitignore；Docker 里挂在 /app/data
 ├─ Dockerfile            # node:22-alpine，非 root 运行，内置健康检查

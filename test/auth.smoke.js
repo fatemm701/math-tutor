@@ -172,7 +172,8 @@ async function submit() {
         return a < 0 || e < 0 ? '' : html.slice(a, e);
     })();
     check(/css\/app-nav\.css/.test(html), '登录页引用 css/app-nav.css');
-    check(/<script\s+src="js\/app-nav\.js"><\/script>/.test(html), '登录页引用 js/app-nav.js');
+    // 资源引用带 ?v=<提交号>（scripts/stamp-assets.js 写入），匹配时允许查询串
+    check(/<script\s+src="js\/app-nav\.js(?:\?[^"]*)?"><\/script>/.test(html), '登录页引用 js/app-nav.js');
     const bodyTag = (html.match(/<body\b([^>]*)>/) || [])[1] || '';
     check(/\bnav-layout\b/.test((bodyTag.match(/class="([^"]*)"/) || [])[1] || ''),
         '登录页 <body> 有 class="nav-layout"');

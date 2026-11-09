@@ -94,7 +94,10 @@ test/
   nav.smoke.js         左侧导航冒烟（收起/分组记忆、窄屏抽屉、当前页高亮、访客与登录态）
   auth.smoke.js        登录注册页冒烟
   teacher.smoke.js     看板冒烟
+  asset-version.test.js 页面资源版本号自检（四个页面的 css/js 都带 ?v=提交号）
   api.test.js          接口测试（真实起服务 + 临时数据目录）
+scripts/
+  stamp-assets.js      给四个页面的本地 css/js 引用打上 ?v=<提交号>
 ```
 
 
@@ -125,7 +128,7 @@ $env:TEACHER_INVITE='换成你自己的口令'; npm start
 npm test
 ```
 
-八个套件串行执行，任一失败即非 0 退出：
+九个套件串行执行，任一失败即非 0 退出：
 
 | 套件 | 覆盖内容 |
 |---|---|
@@ -136,6 +139,7 @@ npm test
 | `nav.smoke.js` | 加载 `app-nav.js`：宽屏收起/展开并记住、练习分组折叠并记住、窄屏点 ☰ 开合抽屉（点遮罩或点链接自动关、不写 localStorage）、缩放窗口后两种形态互切、当前页 aria-current、访客态置灰且不请求接口、登录后按角色显示看板入口（学生「我的看板」/ 老师「看板」）、没有侧边栏的页面与 localStorage 被禁用时不抛错 |
 | `auth.smoke.js` | 登录注册页：角色切换、字段可见性、提交字段名、跳转 |
 | `teacher.smoke.js` | 老师的看板渲染、分数列/方程列/汇总卡/明细标签与详情切换、列表与明细筛选（含题型）、夜间模式开关；学生进来看到的「我的练习」汇总/筛选/明细/返回 |
+| `asset-version.test.js` | 四个页面引用的 `css/*.css`、`js/*.js` 都带 `?v=` 版本号、四页版本号一致、且等于当前提交号（`vendor/` 的第三方资源不要求） |
 | `api.test.js` | 140 条接口断言（真实起服务 + 临时数据目录），含 tags 过滤/去重、分数统计、`topic` 题型统计与 `byTopic` 归类、只读自己汇总的越权防护 |
 
 页面测试用最小 DOM 桩跑 Node，不需要浏览器；加载 `frontend/js/practice.js`（或 `practice-equations.js`）和 `frontend/vendor/math.js`，与浏览器实际一致。
@@ -146,12 +150,36 @@ npm test
 >
 > 一元一次方程页的题目同样只用一个字母 `x`；判题时学生写 `x = 4`、`4`、`4 = x`、`x = 8/2` 都算对（小数也可以，会先换成分数再比），写成 `2x = 8` 这种同解但没化到 `x = …` 的形式会提示「还没化系数为一」。
 
+## 静态资源版本号（改了 CSS/JS 后必须做）
+
+四个页面引用本地样式和脚本时都带 `?v=<提交号>`，例如 `<link rel="stylesheet" href="css/app-nav.css?v=db5c7625">`。
+浏览器按 URL 缓存，换了版本号才会重新拉取，学生端不必手动强刷。
+`vendor/`（KaTeX、mathjs）是第三方固定版本，不带版本号。
+
+发版流程：
+
+```bash
+npm run stamp                # 改完代码立刻改版本号（取当前 HEAD 前 8 位）
+git add -A && git commit -m "..." && git push
+npm run stamp                # 提交后版本号变成新提交号，再跑一次并 amend / 补一个提交
+```
+
+版本号就是提交号，所以**提交后要再执行一次 `npm run stamp`**，否则 `asset-version.test.js` 会提示「版本号应等于当前提交」。
+想跳过这种鸡生蛋问题，也可以直接手动改：把四个页面里的 `?v=` 换成任意递增的标记（如日期 `20261109`），再用 `ASSET_VERSION=20261109 npm run stamp` 保持统一。
+
 ## 部署
 
-见 [DEPLOY.md](DEPLOY.md)：镜像与 compose、更新与回滚、备份、反向代理与 HTTPS、常见故障排查。
+当前生产环境已从「tar 包覆盖」切换为 **git 仓库 + `git pull`**（`/opt/poly-drill`，只读 Deploy key）。日常更新就三步：
 
-当前发布方式是「开发机打 tar → `scp` → 服务器解包 → `docker compose up -d --build`」。
-仓库已备好服务器直连 `git pull` 的配置说明（DEPLOY.md §2.2），加上一把只读 Deploy key 即可切换。
+```bash
+cd /opt/poly-drill
+git pull --ff-only
+docker compose up -d --build
+```
+
+按上面的第 1、3 条改完版本号再提交推送，服务器拉下来就是新的；`data/` 与 `.env` 不在仓库里，不受影响。
+镜像与 compose、回滚、备份、反向代理与 HTTPS、常见故障排查见 [DEPLOY.md](DEPLOY.md)。
+
 `tools/` 是开发机专用的本地脚本（临时隧道等），已写进 `.gitignore` 与 `.dockerignore`，不进仓库、也不上传服务器。
 
 ## 主要接口
