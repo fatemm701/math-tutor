@@ -10,3 +10,11 @@ tools/
 *.log
 Thumbs.db
 .DS_Store
+.vscode/
+
+# 临时脚本 / 临时产物（排查时随手写的 _t_*.js、_tmp_*.js，别提交上来）
+_t_*.*
+_tmp_*/
+_tmp_*
+*.orig
+*.rej

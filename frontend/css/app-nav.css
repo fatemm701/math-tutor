@@ -402,3 +402,41 @@ body.nav-collapsed .app-nav-group[data-open="false"] .app-nav-sub {
         padding: 14px 12px;
     }
 }
+
+/* ============================ 侧边栏随页面一起滚 ============================ */
+/* 宽屏下「整列侧边栏」只有在页面本身不滚动时才对得上视口。
+    一旦内容比一屏还高（比如展示解析步骤的那一屏），内容区是跟着页面滚的，
+    侧边栏如果保持 min-height:100vh，就会在滚到下面时提前结束、底下露出一截背景。
+    这里按滚动方向切换：
+      · 内容比一屏短（页面不滚）：保留整列铺满，账号区压在底部；
+      · 内容比一屏长（页面要滚）：侧边栏改成 sticky，始终贴在视口里，顶端对齐、整屏高。
+    JS 在 js/app-nav.js 的 syncNavHeight() 里切 .nav-tall
+    （没有 JS 时也安全：默认走「整列铺满」的老行为）。 */
+body.nav-layout.nav-tall {
+    min-height: 0;
+}
+
+body.nav-layout.nav-tall .app-nav-slot {
+    min-height: 0;
+    align-self: flex-start;
+    height: 100vh;
+    position: sticky;
+    top: 0;
+}
+
+body.nav-layout.nav-tall .app-nav {
+    overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+    /* 窄屏是抽屉浮层，跟滚动无关，始终满高 */
+    body.nav-layout.nav-tall .app-nav-slot {
+        min-height: 0;
+        height: auto;
+        position: static;
+    }
+
+    body.nav-layout.nav-tall .app-nav {
+        overflow-y: auto;
+    }
+}

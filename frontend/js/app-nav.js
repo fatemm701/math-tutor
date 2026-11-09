@@ -4,6 +4,7 @@
 //   1. 按登录角色显示看板入口文字；未登录时把入口置灰
 //   2. 菜单按钮：宽屏切换「收起 / 展开」，窄屏开合抽屉；状态记在 localStorage
 //   3. 「练习」分组折叠 / 展开，状态也记在本机
+//   4. 侧边栏高度：内容不满一屏时整列铺满，内容更长时改成随页面滚动的 sticky 列
 //
 // 页面里已经有 #who / #theme-toggle / #logout 的脚本（practice.js、practice-equations.js、
 // teacher.html 内联脚本），这里不重复处理它们，免得事件绑两次。
@@ -13,6 +14,7 @@
     const NAV_KEY = 'poly-nav';          // 'collapsed' | 缺省（展开）
     const GROUP_KEY = 'poly-nav-group';  // 'closed' | 缺省（展开）
     const NARROW = '(max-width: 768px)';
+    const TALL_DELTA = 2;                // 内容比视口高出这么多像素才算「要滚动」
 
     function readFlag(key) {
         try {
@@ -36,6 +38,20 @@
         } catch (e) {
             return false;
         }
+    }
+
+    // 侧边栏高度形态：内容比一屏长时给 body 加 nav-tall，
+    // CSS 里把侧边栏换成 sticky（贴视口）。判断依据是「内容真实高度 > 视口」，
+    // 不是 scrollHeight，避免某些环境下的循环判定
+    function syncNavHeight() {
+        const body = document.body;
+        if (!body || !body.classList || !body.classList.contains('nav-layout')) return;
+        const main = typeof document.querySelector === 'function' ? document.querySelector('.app-main') : null;
+        const doc = document.documentElement;
+        if (!main || !doc || typeof main.getBoundingClientRect !== 'function') return;
+        const viewH = doc.clientHeight || (global.innerHeight || 0);
+        const contentH = main.getBoundingClientRect ? main.getBoundingClientRect().height : 0;
+        body.classList.toggle('nav-tall', viewH > 0 && contentH > viewH + TALL_DELTA);
     }
 
     function init() {
@@ -122,6 +138,19 @@
             Array.prototype.forEach.call(links, (a) => {
                 if (a.getAttribute('href') === here) a.setAttribute('aria-current', 'page');
             });
+        }
+
+        // ---------- 2.5 侧边栏高度：跟着内容长与不长切换形态 ----------
+        syncNavHeight();
+        if (typeof global.addEventListener === 'function') {
+            global.addEventListener('resize', syncNavHeight);
+        }
+        if (typeof global.ResizeObserver === 'function') {
+            // 题目切换、解析展开都会让内容变高变矮，这里跟着重算（老浏览器没有就只在 resize 时算）
+            try {
+                const main = typeof document.querySelector === 'function' ? document.querySelector('.app-main') : null;
+                if (main) new global.ResizeObserver(syncNavHeight).observe(main);
+            } catch (e) { /* 个别环境构造失败就跳过 */ }
         }
 
         // ---------- 5. 登录角色 ----------
@@ -220,5 +249,5 @@
     }
 
     // 暴露只读常量给桩测试
-    global.AppNav = { isNarrow, NAV_KEY, GROUP_KEY };
+    global.AppNav = { isNarrow, NAV_KEY, GROUP_KEY, syncNavHeight };
 })(window);

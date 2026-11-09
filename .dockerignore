@@ -9,5 +9,18 @@ tools
 core_test.js
 question_gen.js
 npm-debug.log*
+*.log
 *.tar.gz
 .env
+
+# 只影响宿主机容器行为的文件，变更它们不会让镜像过期，
+# 留着会让每次改端口/配置都白白重跑一次 docker build
+docker-compose.yml
+DEPLOY.md
+README.md
+.gitignore
+.dockerignore
+
+# 临时脚本 / 临时产物
+_t_*.*
+_tmp_*/
