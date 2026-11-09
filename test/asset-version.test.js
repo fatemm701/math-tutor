@@ -59,7 +59,8 @@ function readHead() {
     return null;
 }
 const head = readHead();
-if (head && !process.env.ASSET_VERSION) {
+// 手动标记（manual-xxx，常见于用日期定版）不和提交号比；其余必须等于当前 HEAD 前 8 位
+if (head && !process.env.ASSET_VERSION && ![...versions].every(v => v.startsWith('manual-'))) {
     const want = head.slice(0, 8);
     check(versions.has(want),
         '资源版本号应等于当前提交 ' + want + '，实际: ' + [...versions].join(', ')
