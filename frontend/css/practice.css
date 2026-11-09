@@ -67,22 +67,23 @@ html[data-theme="dark"] {
     color-scheme: dark;
 }
 
+/* 页面外壳（左边侧边栏 + 右边内容区）由 css/app-nav.css 负责，
+   这里只管本页自己的外观 */
 body {
     font-family: system-ui, -apple-system, sans-serif;
     background-color: var(--bg);
     color: var(--text);
     margin: 0;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
 }
 
+/* 内容窄栏：至少一屏高 + 垂直居中，内容少的时候也不会缩在顶上 */
 .container {
     width: 100%;
     max-width: 500px;
+    min-height: calc(100vh - 40px);
     display: flex;
     flex-direction: column;
+    justify-content: center;
     gap: 15px;
 }
 

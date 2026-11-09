@@ -16,6 +16,7 @@
     <!-- 本地 KaTeX：题目和答案按数学格式显示，断网也能用 -->
     <link rel="stylesheet" href="vendor/katex/katex.min.css">
     <script src="vendor/katex/katex.min.js"></script>
+    <link rel="stylesheet" href="css/app-nav.css">
     <style>
         :root {
             --primary: #4F46E5;
@@ -65,64 +66,19 @@
             color-scheme: dark;
         }
 
+        /* 页面外壳（左边侧边栏 + 右边内容区）由 css/app-nav.css 负责 */
         body {
             font-family: system-ui, -apple-system, sans-serif;
             background-color: var(--bg);
             margin: 0;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
             color: var(--text);
         }
 
-        .topbar {
-            width: 100%;
-            max-width: 1080px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            margin-bottom: 14px;
-            font-size: 0.85rem;
-            color: var(--text-muted);
-        }
-
-        .topbar .who {
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .topbar .actions {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex: 0 0 auto;
-        }
-
-        .topbar button,
-        .topbar a.btn {
-            font-family: inherit;
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            background: var(--surface);
-            border: 1px solid var(--line);
-            border-radius: 6px;
-            padding: 4px 10px;
-            cursor: pointer;
-            text-decoration: none;
-        }
-
-        .topbar a.btn.primary {
-            color: #fff;
-            background: var(--primary);
-            border-color: var(--primary);
-        }
-
+        /* 内容区由 css/app-nav.css 的 .app-main 负责居中（flex 列 + align-items:center），
+           这里只管最大宽度；汇总卡片的列宽从同一个变量算，侧边栏在的时候也不会挤成窄条 */
         .wrap {
             width: 100%;
-            max-width: 1080px;
+            max-width: var(--board-width, 1080px);
             display: flex;
             flex-direction: column;
             gap: 16px;
@@ -425,18 +381,54 @@
     </style>
 </head>
 
-<body>
-    <div class="topbar">
-        <span class="who" id="who">加载中…</span>
-        <span class="actions">
-            <a class="btn primary" href="practice.html">去练习</a>
-            <button type="button" id="theme-toggle" title="夜间模式" aria-pressed="false">🌙</button>
-            <button type="button" id="refresh">刷新</button>
-            <button type="button" id="logout">退出</button>
-        </span>
+<body class="nav-layout" data-auth="app">
+
+    <!-- 左侧导航：四个页面共用同一段结构，样式在 css/app-nav.css，交互在 js/app-nav.js -->
+    <div class="app-nav-slot">
+    <aside class="app-nav" id="app-nav" aria-label="主导航">
+        <div class="app-nav-head">
+            <button type="button" class="app-nav-toggle" id="nav-toggle" aria-label="收起菜单"
+                aria-expanded="true">☰</button>
+            <a class="app-nav-brand" href="index.html">数学练习</a>
+        </div>
+        <nav class="app-nav-links">
+            <p class="app-nav-caption">学习</p>
+            <div class="app-nav-group" data-open="true">
+                <button type="button" class="app-nav-group-btn" id="nav-group-practice" aria-expanded="true">
+                    <span class="app-nav-icon" aria-hidden="true">▤</span>
+                    <span class="app-nav-text">练习</span>
+                    <span class="app-nav-caret" aria-hidden="true">▾</span>
+                </button>
+                <div class="app-nav-sub" id="nav-sub-practice">
+                    <a class="app-nav-link" href="practice.html" data-nav="simplify">
+                        <span class="app-nav-icon" aria-hidden="true">∑</span>
+                        <span class="app-nav-text">整式化简</span>
+                    </a>
+                    <a class="app-nav-link" href="equations.html" data-nav="equation">
+                        <span class="app-nav-icon" aria-hidden="true">=</span>
+                        <span class="app-nav-text">一元一次方程</span>
+                    </a>
+                </div>
+            </div>
+            <a class="app-nav-link" id="nav-board" href="teacher.html" data-nav="board" aria-current="page" hidden>
+                <span class="app-nav-icon" aria-hidden="true">▦</span>
+                <span class="app-nav-text">看板</span>
+            </a>
+        </nav>
+        <div class="app-nav-foot">
+            <span class="app-nav-who" id="who">加载中…</span>
+            <div class="app-nav-actions">
+                <button type="button" id="theme-toggle" title="夜间模式" aria-pressed="false">🌙</button>
+                <button type="button" id="logout">退出</button>
+                <a class="btn primary" id="nav-login" href="index.html" hidden>登录</a>
+            </div>
+        </div>
+    </aside>
+    <div class="app-nav-backdrop" id="app-nav-backdrop" aria-hidden="true"></div>
     </div>
 
-    <div class="wrap">
+    <main class="app-main">
+        <div class="wrap">
         <div class="cards" id="summary"></div>
 
         <section class="panel" id="mine-view" hidden>
@@ -468,6 +460,7 @@
             <div class="section-head">
                 <h2>学生</h2>
                 <span class="hint" id="updated"></span>
+                <button type="button" id="refresh">刷新</button>
             </div>
             <div class="filter-bar" id="list-filter"></div>
             <p class="filter-summary" id="list-filter-summary"></p>
@@ -536,8 +529,10 @@
             </div>
             <p class="empty" id="detail-empty" hidden>这个学生还没有做题记录。</p>
         </section>
-    </div>
+        </div>
+    </main>
 
+    <script src="js/app-nav.js"></script>
     <script>
         const $ = (id) => document.getElementById(id);
         const LEVEL_LABEL = { 1: '① 入门', 2: '② 基础', 3: '③ 进阶', 4: '④ 挑战' };

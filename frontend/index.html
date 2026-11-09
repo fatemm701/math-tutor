@@ -5,6 +5,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>整式化简练习 · 登录</title>
+
+    <!-- 夜间模式：第一帧之前就把 data-theme 挂到 <html> 上，避免先闪一下白底 -->
+    <script>
+        try {
+            if (localStorage.getItem('poly-theme') === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        } catch (e) { /* 隐私模式下 localStorage 不可用，就用亮色 */ }
+    </script>
+    <link rel="stylesheet" href="css/app-nav.css">
     <style>
         :root {
             --primary: #4F46E5;
@@ -175,49 +185,97 @@
     </style>
 </head>
 
-<body>
-    <div class="container">
-        <h1>整式化简练习</h1>
+<body class="nav-layout" data-auth="guest">
 
-        <div class="tabs">
-            <button type="button" class="tab active" data-mode="login">登录</button>
-            <button type="button" class="tab" data-mode="register">注册</button>
+    <!-- 左侧导航：四个页面共用同一段结构，样式在 css/app-nav.css，交互在 js/app-nav.js -->
+    <div class="app-nav-slot">
+    <aside class="app-nav" id="app-nav" aria-label="主导航">
+        <div class="app-nav-head">
+            <button type="button" class="app-nav-toggle" id="nav-toggle" aria-label="收起菜单"
+                aria-expanded="true">☰</button>
+            <a class="app-nav-brand" href="index.html">数学练习</a>
         </div>
-
-        <form id="auth-form">
-            <label>姓名
-                <input id="name" type="text" required maxlength="20" autocomplete="username">
-            </label>
-            <label>密码
-                <input id="password" type="password" required maxlength="64" autocomplete="current-password">
-            </label>
-
-            <div id="register-only" hidden>
-                <div class="roles">
-                    <label class="role"><input type="radio" name="role" value="student" checked> 我是学生</label>
-                    <label class="role"><input type="radio" name="role" value="teacher"> 我是老师</label>
+        <nav class="app-nav-links">
+            <p class="app-nav-caption">学习</p>
+            <div class="app-nav-group" data-open="true">
+                <button type="button" class="app-nav-group-btn" id="nav-group-practice" aria-expanded="true">
+                    <span class="app-nav-icon" aria-hidden="true">▤</span>
+                    <span class="app-nav-text">练习</span>
+                    <span class="app-nav-caret" aria-hidden="true">▾</span>
+                </button>
+                <div class="app-nav-sub" id="nav-sub-practice">
+                    <a class="app-nav-link" href="practice.html" data-nav="simplify">
+                        <span class="app-nav-icon" aria-hidden="true">∑</span>
+                        <span class="app-nav-text">整式化简</span>
+                    </a>
+                    <a class="app-nav-link" href="equations.html" data-nav="equation">
+                        <span class="app-nav-icon" aria-hidden="true">=</span>
+                        <span class="app-nav-text">一元一次方程</span>
+                    </a>
                 </div>
             </div>
-
-            <label id="invite-row" hidden>邀请码
-                <input id="invite" type="text" maxlength="12" placeholder="老师给你的 6 位邀请码">
-            </label>
-
-            <label id="teacher-row" hidden>管理员口令
-                <input id="teacher-invite" type="text" maxlength="64" placeholder="向管理员索取" autocomplete="off">
-            </label>
-
-            <button type="submit" class="submit" id="submit-btn">登录</button>
-            <p id="msg" class="msg"></p>
-        </form>
-
-        <div id="invite-result" class="invite-panel" hidden>
-            <p>注册成功，你的邀请码是：</p>
-            <div class="invite-code" id="invite-code"></div>
-            <p class="hint">把这个码发给学生，他们注册时填它就能加入。</p>
-            <a class="go" href="practice.html">进入练习 →</a>
+            <a class="app-nav-link" id="nav-board" href="teacher.html" data-nav="board" hidden>
+                <span class="app-nav-icon" aria-hidden="true">▦</span>
+                <span class="app-nav-text">看板</span>
+            </a>
+        </nav>
+        <div class="app-nav-foot">
+            <span class="app-nav-who" id="who">加载中…</span>
+            <div class="app-nav-actions">
+                <button type="button" id="theme-toggle" title="夜间模式" aria-pressed="false">🌙</button>
+                <button type="button" id="logout">退出</button>
+                <a class="btn primary" id="nav-login" href="index.html" hidden>登录</a>
+            </div>
         </div>
+    </aside>
+    <div class="app-nav-backdrop" id="app-nav-backdrop" aria-hidden="true"></div>
     </div>
+
+    <main class="app-main">
+        <div class="container">
+            <h1>整式化简练习</h1>
+
+            <div class="tabs">
+                <button type="button" class="tab active" data-mode="login">登录</button>
+                <button type="button" class="tab" data-mode="register">注册</button>
+            </div>
+
+            <form id="auth-form">
+                <label>姓名
+                    <input id="name" type="text" required maxlength="20" autocomplete="username">
+                </label>
+                <label>密码
+                    <input id="password" type="password" required maxlength="64" autocomplete="current-password">
+                </label>
+
+                <div id="register-only" hidden>
+                    <div class="roles">
+                        <label class="role"><input type="radio" name="role" value="student" checked> 我是学生</label>
+                        <label class="role"><input type="radio" name="role" value="teacher"> 我是老师</label>
+                    </div>
+                </div>
+
+                <label id="invite-row" hidden>邀请码
+                    <input id="invite" type="text" maxlength="12" placeholder="老师给你的 6 位邀请码">
+                </label>
+
+                <label id="teacher-row" hidden>管理员口令
+                    <input id="teacher-invite" type="text" maxlength="64" placeholder="向管理员索取" autocomplete="off">
+                </label>
+
+                <button type="submit" class="submit" id="submit-btn">登录</button>
+                <p id="msg" class="msg"></p>
+            </form>
+
+            <div id="invite-result" class="invite-panel" hidden>
+                <p>注册成功，你的邀请码是：</p>
+                <div class="invite-code" id="invite-code"></div>
+                <p class="hint">把这个码发给学生，他们注册时填它就能加入。</p>
+                <a class="go" href="practice.html">进入练习 →</a>
+            </div>
+        </div>
+    </main>
+    <script src="js/app-nav.js"></script>
     <script>
         const $ = (id) => document.getElementById(id);
         let mode = 'login';

@@ -7,7 +7,12 @@ const path = require('path');
 
 const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'frontend/index.html'), 'utf8');
-const inline = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)][0][1];
+// 页面里现在有两段内联脚本：head 里的夜间模式启动脚本 + 体尾的登录/注册逻辑。
+// 取错了会得到「只有夜间模式」的那段（后面 handlers.click 全是 undefined）。
+// 按内容挑：登录脚本一定含 auth-form 的提交处理，而不是按位置 [0] 硬猜。
+const inlineScripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+const authCandidates = inlineScripts.filter(s => /auth-form/.test(s));
+const inline = authCandidates[0];
 
 let fails = 0;
 function check(ok, msg) {
@@ -144,6 +149,45 @@ async function submit() {
     // 0. CSS 兜底：label{display:flex} 会盖掉 [hidden]，必须有 !important 规则
     check(/\[hidden\]\s*\{[^}]*display:\s*none\s*!important/.test(html),
         '[hidden] 有 display:none !important 兜底（否则隐藏的行照样显示）');
+
+    // 0b. 内联脚本选对了：登录脚本才会处理 #auth-form
+    check(!!inline && /auth-form/.test(inline),
+        '取到的是登录/注册脚本（按内容挑，不按位置猜）');
+    // 夜间模式脚本必须留在 <head> 里（首帧前就要挂 data-theme），
+    // 所以只看 head 段的内联脚本，别混进页面尾部的业务脚本
+    const head = (html.match(/<head\b[\s\S]*?<\/head>/i) || [''])[0];
+    const headInline = [...head.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+    check(headInline.some(s => /poly-theme/.test(s)),
+        '页面除登录脚本外还有一段夜间模式启动脚本');
+    const themeScript = headInline.find(s => /poly-theme/.test(s)) || '';
+    check(!/fetch|document\.getElementById/.test(themeScript),
+        '夜间模式脚本只碰 documentElement，不请求接口也不取业务节点');
+
+    // 0c. 侧边栏：登录页也挂同一套 app-nav，未登录时由 app-nav.js 置灰入口
+    const navBlock = (() => {
+        const s = html.indexOf('id="app-nav"');
+        if (s < 0) return '';
+        const a = html.lastIndexOf('<aside', s);
+        const e = html.indexOf('</aside>', s);
+        return a < 0 || e < 0 ? '' : html.slice(a, e);
+    })();
+    check(/css\/app-nav\.css/.test(html), '登录页引用 css/app-nav.css');
+    check(/<script\s+src="js\/app-nav\.js"><\/script>/.test(html), '登录页引用 js/app-nav.js');
+    const bodyTag = (html.match(/<body\b([^>]*)>/) || [])[1] || '';
+    check(/\bnav-layout\b/.test((bodyTag.match(/class="([^"]*)"/) || [])[1] || ''),
+        '登录页 <body> 有 class="nav-layout"');
+    // 关键：登录页必须是 guest，否则 app-nav.js 会去请求 /api/auth/me 并把链接当已登录处理
+    check(/data-auth="guest"/.test(bodyTag), '登录页 <body> 标了 data-auth="guest"（不请求登录态）');
+    check(/id="app-nav"/.test(html), '登录页有侧边栏 #app-nav');
+    const navHrefs = [...navBlock.matchAll(/<a\b[^>]*data-nav="([^"]+)"[^>]*>/g)]
+        .map(m => ({ nav: m[1], href: (m[0].match(/href="([^"]*)"/) || [])[1] }));
+    const hrefOf = (n) => (navHrefs.find(l => l.nav === n) || {}).href;
+    check(hrefOf('simplify') === 'practice.html' && hrefOf('equation') === 'equations.html'
+        && hrefOf('board') === 'teacher.html',
+        '登录页侧边栏三个入口链到 practice / equations / teacher，实际: '
+        + navHrefs.map(l => l.nav + '→' + l.href).join(','));
+    // 登录页不属于任何练习页，所有链接都不该带 aria-current="page"
+    check(!/aria-current="page"/.test(navBlock), '登录页侧边栏不应把任何入口标为当前页');
 
     // 1. 登录模式：邀请码行、口令行都不显示
     check(inviteRow.hidden === true && teacherRow.hidden === true, '登录模式不显示邀请码/管理员口令');

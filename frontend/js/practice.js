@@ -146,7 +146,8 @@
                     const invite = user.inviteCode ? ' · 邀请码 ' + user.inviteCode : '';
                     whoEl.textContent = roleLabel + '：' + user.name + invite;
                 }
-                const boardLink = document.getElementById('board-link');
+                // 看板入口在左侧导航里（#nav-board，旧页面叫 #board-link），显示与文字由 app-nav.js 负责
+                const boardLink = document.getElementById('nav-board') || document.getElementById('board-link');
                 // 登录后都能进看板：老师看全班，学生只看自己（页面内部按角色分流）
                 if (boardLink) boardLink.hidden = false;
             }

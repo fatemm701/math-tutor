@@ -132,6 +132,46 @@ function keysFromHtml(html, fileLabel) {
 const practiceHtml = fs.readFileSync(path.join(root, 'frontend', 'practice.html'), 'utf8');
 const htmlKeys = keysFromHtml(practiceHtml, 'practice.html');
 
+// ---------- 侧边栏（app-nav）夹具解析 ----------
+// 四个页面共用同一段侧边栏结构：只解析、不在桩里跑 app-nav.js（那是 nav.smoke.js 的活）。
+// 返回 { hasNav, navBlock, links:[{href, nav, ariaCurrent}], bodyClass, bodyAuth, refs }，
+// 让「两页侧边栏结构一致」这类断言可以逐项比较，而不是各写一套正则。
+function navFromHtml(html) {
+    const navStart = html.indexOf('id="app-nav"');
+    const navBlock = navStart < 0 ? '' : (() => {
+        // 从 <aside 开始到它的 </aside> 结束
+        const asideStart = html.lastIndexOf('<aside', navStart);
+        const asideEnd = html.indexOf('</aside>', navStart);
+        return asideStart < 0 || asideEnd < 0 ? '' : html.slice(asideStart, asideEnd + '</aside>'.length);
+    })();
+    const links = [];
+    const re = /<a\b([^>]*)>([\s\S]*?)<\/a>/g;
+    let m;
+    while ((m = re.exec(navBlock))) {
+        const attrs = m[1];
+        const nav = (attrs.match(/data-nav="([^"]*)"/) || [])[1];
+        if (!nav) continue;
+        links.push({
+            href: (attrs.match(/href="([^"]*)"/) || [])[1] || null,
+            nav,
+            ariaCurrent: (attrs.match(/aria-current="([^"]*)"/) || [])[1] || null,
+            // 侧边栏链接的文字在 .app-nav-text 里
+            text: (m[2].match(/class="app-nav-text"[^>]*>([^<]*)</) || [])[1]
+                || m[2].replace(/<[^>]*>/g, '').trim()
+        });
+    }
+    const bodyTag = (html.match(/<body\b([^>]*)>/) || [])[1] || '';
+    return {
+        hasNav: navBlock.length > 0,
+        navBlock,
+        links,
+        bodyClass: (bodyTag.match(/class="([^"]*)"/) || [])[1] || '',
+        bodyAuth: (bodyTag.match(/data-auth="([^"]*)"/) || [])[1] || null,
+        headScripts: [...(html.slice(0, html.indexOf('</head>')).matchAll(/<script\s+src="([^"]+)"><\/script>/g))].map(x => x[1]),
+        headLinks: [...(html.slice(0, html.indexOf('</head>')).matchAll(/<link\b[^>]*href="([^"]+)"/g))].map(x => x[1])
+    };
+}
+
 const store = new Map();
 const localStorage = {
     getItem: (k) => (store.has(k) ? store.get(k) : null),
@@ -178,7 +218,8 @@ new Function('window', 'document', 'katex', 'localStorage', 'confirm', 'setTimeo
     () => 0, () => { }, math, fetchStub);
 
 const fails = [];
-const check = (cond, msg) => { if (!cond) fails.push(msg); };
+let checksRun = 0;   // 只在 UI_SMOKE_STATS=1 时汇报，默认输出不变
+const check = (cond, msg) => { checksRun++; if (!cond) fails.push(msg); };
 // 取某一行的第 i 个单元格（行结构缺失时返回 null，避免测试自己崩掉、掩盖真正的失败）
 const cellText = (row, i) => {
     const cell = row && row.children ? row.children[i || 0] : null;
@@ -381,9 +422,17 @@ async function bootPage(cfg) {
     const feedback = mk('feedback-display');
     const hints = mk('hint-display');
     const steps = mk('steps-display');
-    mk('who');
-    mk('board-link');
-    mk('logout');
+    // 侧边栏（app-nav）骨架：页面脚本按 id 取 #who / #theme-toggle / #logout，
+    // 这些元素现在住在侧边栏脚部；#board-link 已改名 #nav-board（页面脚本取不到时会安全跳过）。
+    // 这里只补节点防报错，不断言 app-nav.js 的行为（那是 nav.smoke.js 的活）。
+    mk('app-nav', 'aside', 'app-nav');
+    mk('nav-toggle', 'button');
+    mk('nav-group-practice', 'button');
+    mk('nav-sub-practice');
+    mk('app-nav-backdrop');
+    mk('who', 'span', 'app-nav-who');
+    mk('nav-board', 'a', 'app-nav-link');
+    mk('logout', 'button');
     const themeBtn = mk('theme-toggle', 'button');
 
     const keyboardEl = mk('keyboard');
@@ -1135,9 +1184,7 @@ if (equationsHtmlSrc) {
             eqHtmlKeys.filter(k => k.action === 'hint').length === 1 &&
             eqHtmlKeys.filter(k => k.action === 'giveup').length === 1,
             '方程页应保留清空/退格/提示/看解析四个动作键');
-        // 两页顶栏互相有入口：学生能来回切换两种练习题
-        eqCheck(/<a[^>]+href="practice\.html"/.test(equationsHtmlSrc), 'equations.html 顶栏应有回「整式化简」的链接');
-        eqCheck(/<a[^>]+href="equations\.html"/.test(practiceHtml), 'practice.html 顶栏应有去「一元一次方程」的链接');
+        // 顶栏互链已换成左侧常驻侧边栏，这里改为对侧边栏的检查（见下方「侧边栏」小节）
         eqCheck(/id="question-display"/.test(equationsHtmlSrc), 'equations.html 应有题目区 #question-display');
         eqCheck(/id="input-display"/.test(equationsHtmlSrc) && /id="feedback-display"/.test(equationsHtmlSrc)
             && /id="hint-display"/.test(equationsHtmlSrc) && /id="steps-display"/.test(equationsHtmlSrc),
@@ -1145,6 +1192,215 @@ if (equationsHtmlSrc) {
         eqCheck(/解方程/.test(equationsHtmlSrc), 'equations.html 题目前应有「解方程」前缀，帮学生分清题型');
     }
 }
+
+// ============================================================
+// 侧边栏夹具：两页共用同一段 app-nav 结构
+// ============================================================
+// 页面结构从「顶部横向互链」换成了「左侧常驻侧边栏」，这里逐页检查：
+// 引用 app-nav.css / app-nav.js、body 上的 nav-layout、三个导航入口及当前页高亮。
+// 注意：只查结构（谁链谁、谁被标当前页），不查 app-nav.js 的交互行为 —— 那是 nav.smoke.js 的事。
+const PAGES = [
+    { file: 'practice.html', html: practiceHtml, here: 'simplify', hereHref: 'practice.html', label: '化简页', script: 'js/practice.js' },
+    { file: 'equations.html', html: equationsHtmlSrc, here: 'equation', hereHref: 'equations.html', label: '方程页', script: 'js/practice-equations.js' }
+];
+const NAV_TARGETS = [
+    { nav: 'simplify', href: 'practice.html', label: '整式化简' },
+    { nav: 'equation', href: 'equations.html', label: '一元一次方程' },
+    { nav: 'board', href: 'teacher.html', label: '看板' }
+];
+
+PAGES.forEach(page => {
+    if (!page.html) {
+        eqCheck(false, '缺少 frontend/' + page.file + '，侧边栏检查无法进行');
+        return;
+    }
+    const nav = navFromHtml(page.html);
+    const tag = '[' + page.label + '侧边栏] ';
+
+    // 1. 资源引用：样式和脚本都要引，否则侧边栏在页面上是不可用 / 不可交互的
+    eqCheck(nav.headLinks.includes('css/app-nav.css'),
+        tag + '应在 <head> 引用 css/app-nav.css，实际: ' + nav.headLinks.join(', '));
+    eqCheck(/<script\s+src="js\/app-nav\.js"><\/script>/.test(page.html),
+        tag + '应引用 js/app-nav.js');
+    // 侧边栏脚本要在页面脚本之前加载（页面脚本启动时可能依赖侧边栏已就位）
+    const navJsPos = page.html.indexOf('js/app-nav.js');
+    const pageScript = page.here === 'simplify' ? 'js/practice.js' : 'js/practice-equations.js';
+    eqCheck(navJsPos >= 0 && page.html.indexOf(pageScript) > navJsPos,
+        tag + 'app-nav.js 应在 ' + pageScript + ' 之前加载');
+
+    // 2. body 上挂布局类和登录态标记（app-nav.js 按 data-auth 决定是否请求 /api/auth/me）
+    eqCheck(nav.bodyClass.split(/\s+/).includes('nav-layout'),
+        tag + '<body> 应有 class="nav-layout"，实际: ' + nav.bodyClass);
+    eqCheck(nav.bodyAuth === 'app',
+        tag + '<body> 应有 data-auth="app"（页面内应用页，侧边栏要请求登录态），实际: ' + nav.bodyAuth);
+
+    // 3. 侧边栏本体存在，且三个入口齐全、href 指向正确页面
+    eqCheck(nav.hasNav, tag + '应有 <aside id="app-nav">');
+    const byNav = {};
+    nav.links.forEach(l => { byNav[l.nav] = l; });
+    NAV_TARGETS.forEach(t => {
+        const link = byNav[t.nav];
+        eqCheck(!!link, tag + '缺少 data-nav="' + t.nav + '" 的入口（实际只有: '
+            + nav.links.map(l => l.nav).join(',') + '）');
+        if (!link) return;
+        eqCheck(link.href === t.href,
+            tag + 'data-nav="' + t.nav + '" 应链到 ' + t.href + '，实际: ' + link.href);
+        eqCheck(String(link.text).length > 0, tag + 'data-nav="' + t.nav + '" 应有可读文字');
+        // 只查「长度 > 0」不够：.app-nav-text 空了会退回图标字符（'∑' / '='），文字其实已经没了。
+        // 这里直接查链接文字里有没有可读的汉字，图标字符和纯符号都不算。
+        eqCheck(/[\u4e00-\u9fa5]/.test(String(link.text)),
+            tag + 'data-nav="' + t.nav + '" 的文字应是可读中文（不能只有图标），实际: '
+            + JSON.stringify(link.text));
+    });
+    // 不允许出现重复入口（同一个 data-nav 出现两次，高亮和禁用逻辑都会乱）
+    const navNames = nav.links.map(l => l.nav);
+    eqCheck(navNames.length === new Set(navNames).size,
+        tag + 'data-nav 入口不应重复，实际: ' + navNames.join(','));
+
+    // 4. 当前页高亮：本页对应的那个带 aria-current="page"，另外两个都不带。
+    //    这是「以后加页面忘了标当前页」的守卫 —— 两页都要查，且必须互为镜像。
+    const current = nav.links.filter(l => l.ariaCurrent === 'page');
+    eqCheck(current.length === 1,
+        tag + '应正好有 1 个入口标 aria-current="page"，实际 ' + current.length
+        + ' 个: ' + current.map(l => l.nav).join(','));
+    eqCheck(current.length === 1 && current[0].nav === page.here,
+        tag + '当前页高亮应标在 data-nav="' + page.here + '" 上，实际标在: '
+        + current.map(l => l.nav).join(',') || '(无)');
+    nav.links.filter(l => l.nav !== page.here).forEach(l => {
+        eqCheck(l.ariaCurrent !== 'page',
+            tag + '非当前页入口 data-nav="' + l.nav + '" 不应带 aria-current="page"');
+    });
+
+    // 5. 顶栏互链已删除、旧 id 已改名：留着会导致「点了没反应」或死链
+    eqCheck(!/id="board-link"/.test(page.html),
+        tag + '旧的 #board-link 应已改名为 #nav-board（页面脚本取不到会安全跳过）');
+    eqCheck(/id="nav-board"/.test(page.html), tag + '应有 #nav-board 看板入口');
+});
+
+// 四个页面的侧边栏是同一段结构复制过去的（最容易出现「改了一页忘另一页」）。
+// 但「逐字一致」不能字面比：每页要标自己的 aria-current="page"，高亮位置本来就不同。
+// 正确的口径是「去掉 aria-current 之后逐字一致」—— 这样任何一处漏改（少个入口、
+// 文字被改、忘记加 hidden、品牌链接指错页）都会被发现，而正确的高亮差异不会被误报。
+{
+    const navRaw = (html) => {
+        const s = html.indexOf('id="app-nav"');
+        if (s < 0) return null;
+        const a = html.lastIndexOf('<aside', s);
+        const e = html.indexOf('</aside>', s);
+        return a < 0 || e < 0 ? null : html.slice(a, e + '</aside>'.length);
+    };
+    // 去掉 aria-current="page"（含多余空白），再比结构内容。
+    // 刻意忽略行首缩进和空行：equations.html 整段多缩进 4 格、换行风格也不同（LF vs CRLF），
+    // 那是格式化差异，不是缺陷；这条断言要抓的是「少个入口 / 文字被改 / 忘了 hidden」这类真问题。
+    const normalizeNav = (block) => block
+        .replace(/\s+aria-current="page"/g, '')
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => l.length > 0)
+        .join('\n');
+
+    const teacherHtmlPath = path.join(root, 'frontend', 'teacher.html');
+    const teacherSrc = fs.existsSync(teacherHtmlPath) ? fs.readFileSync(teacherHtmlPath, 'utf8') : null;
+    const NAV_PAGES = [
+        { file: 'practice.html', html: practiceHtml, here: 'simplify' },
+        { file: 'equations.html', html: equationsHtmlSrc, here: 'equation' },
+        { file: 'teacher.html', html: teacherSrc, here: 'board' },
+        { file: 'index.html', html: readSrc('frontend/index.html'), here: null }   // 登录页不属于任何练习入口，不该标高亮
+    ];
+
+    const base = navRaw(practiceHtml);
+    eqCheck(!!base, '[侧边栏] practice.html 里应能取到 app-nav 块');
+    if (base) {
+        const baseNorm = normalizeNav(base);
+        NAV_PAGES.forEach(p => {
+            if (!p.html) return;   // 页面不存在的情况由各自的套件负责
+            const block = navRaw(p.html);
+            if (!block) { eqCheck(false, '[侧边栏] ' + p.file + ' 里应能取到 app-nav 块'); return; }
+            eqCheck(normalizeNav(block) === baseNorm,
+                '[侧边栏] ' + p.file + ' 的侧边栏应与 practice.html 逐字一致（仅 aria-current 高亮位置可不同）'
+                + '——四个页面共用同一段结构，这里不同就说明有一页漏改了');
+        });
+
+        // 登录页底部多一个「登录」按钮（访客态由 app-nav.js 显露），其余页面也要有且默认隐藏，
+        // 否则已登录用户会看到一个多余的「登录」入口
+        NAV_PAGES.forEach(p => {
+            if (!p.html) return;
+            const block = navRaw(p.html);
+            eqCheck(/id="nav-login"/.test(block),
+                '[侧边栏] ' + p.file + ' 应有 #nav-login（底部登录入口，四个页面结构一致）');
+            const loginTag = (block.match(/<a\b[^>]*id="nav-login"[^>]*>/) || [''])[0];
+            eqCheck(/\bhidden\b/.test(loginTag),
+                '[侧边栏] ' + p.file + ' 的 #nav-login 默认应带 hidden（由 app-nav.js 在访客态显露），实际: '
+                + JSON.stringify(loginTag));
+            // 品牌链接四个页面统一指向 index.html
+            const brandHref = (block.match(/class="app-nav-brand"\s+href="([^"]+)"/) || [])[1]
+                || (block.match(/<a\b[^>]*app-nav-brand[^>]*>/) || [''])[0].match(/href="([^"]+)"/)?.[1];
+            eqCheck(brandHref === 'index.html',
+                '[侧边栏] ' + p.file + ' 的品牌链接应指向 index.html，实际: ' + brandHref);
+        });
+    }
+}
+
+// 两页侧边栏必须完全一致（同一段结构复制到每个页面，最容易出现「改了一页忘另一页」）
+if (equationsHtmlSrc) {
+    const a = navFromHtml(practiceHtml);
+    const b = navFromHtml(equationsHtmlSrc);
+    const shape = (n) => n.links.map(l => l.nav + '→' + l.href).sort().join(' | ');
+    eqCheck(shape(a) === shape(b),
+        '[侧边栏] 两页的导航入口应完全一致，化简页: ' + shape(a) + '，方程页: ' + shape(b));
+    // 高亮必须互为镜像：化简页高亮 simplify、方程页高亮 equation
+    const currentOf = (n) => (n.links.find(l => l.ariaCurrent === 'page') || {}).nav;
+    eqCheck(currentOf(a) === 'simplify' && currentOf(b) === 'equation',
+        '[侧边栏] 两页当前页高亮应互为镜像（化简页=simplify、方程页=equation），实际: '
+        + currentOf(a) + ' / ' + currentOf(b));
+}
+
+// 6. keysFromHtml 的解析前提：id="keyboard" 之后第一个 <script> 必须在软键盘**全部按键之后**。
+//    解析区间就截到这个 <script>，一旦有人把脚本挪进键盘块（或又在键盘后面塞一段脚本），
+//    软键盘解析就会少键，而「动作键一致」这类断言会悄悄失效 —— 这条把它钉死。
+//    注意：侧边栏改造后，键盘后第一个脚本是 js/app-nav.js（页面脚本在它后面），
+//    所以预期值随页面而异，但「必须晚于最后一个按键」这个前提不变。
+PAGES.forEach(page => {
+    if (!page.html) return;
+    const kStart = page.html.indexOf('id="keyboard"');
+    if (kStart < 0) {
+        eqCheck(false, '[' + page.label + '] 找不到 id="keyboard"');
+        return;
+    }
+    const firstScript = page.html.indexOf('<script', kStart);
+    // 键盘块的真正结尾：键盘之后第一个 </div> 之后紧接 </main>（键盘是 container 的最后一个子节点）
+    const keyboardClose = page.html.indexOf('</main>', kStart);
+    const lastKey = page.html.indexOf('data-action="submit"', kStart);
+    const scriptSrc = firstScript < 0 ? null
+        : ((page.html.slice(firstScript).match(/<script\s+src="([^"]+)"/) || [])[1] || '(内联脚本)');
+    // 用 submit 键的真实位置比较：截断点必须落在最后一个按键之后
+    eqCheck(firstScript > lastKey,
+        '[' + page.label + '] id="keyboard" 之后第一个 <script> 必须晚于提交键，'
+        + '否则 keysFromHtml 的解析区间会被截断（脚本@' + firstScript + '，提交键@' + lastKey + '）');
+    // 更强的守卫：整段键盘块里（到 </main> 前）不允许出现任何 <script>
+    const keyboardBlock = page.html.slice(kStart, keyboardClose < 0 ? page.html.length : keyboardClose);
+    const innerScript = keyboardBlock.indexOf('<script');
+    eqCheck(innerScript < 0,
+        '[' + page.label + '] 软键盘块内（#keyboard 到 </main> 之间）不应出现 <script>，'
+        + '否则 keysFromHtml 会把按键解析截断；实际出现在块内偏移 ' + innerScript);
+    eqCheck(scriptSrc === 'js/app-nav.js',
+        '[' + page.label + '] id="keyboard" 之后第一个 <script> 应是侧边栏脚本 js/app-nav.js，实际: ' + scriptSrc);
+    // 页面脚本必须在这个截断点之后（否则它会被当成软键盘块的一部分，解析必然出错）
+    const pageScriptPos = page.html.indexOf('<script src="' + page.script + '">');
+    eqCheck(pageScriptPos > firstScript,
+        '[' + page.label + '] 页面脚本 ' + page.script + ' 应在截断点之后加载，实际位置: ' + pageScriptPos
+        + '（截断点 ' + firstScript + '）');
+    // 解析结果本身必须是完整的：20 个 data-val + 5 个 data-action（化简页），
+    // 这是「动作键一致」等下游对照的输入，短一个就说明口径已经偏了
+    const parsedNow = (() => { try { return keysFromHtml(page.html, page.file); } catch (e) { return []; } })();
+    const wantVals = page.here === 'simplify' ? 20 : 21;
+    eqCheck(parsedNow.filter(k => k.val).length === wantVals,
+        '[' + page.label + '] 从页面解析出的 data-val 键应是 ' + wantVals + ' 个，实际 '
+        + parsedNow.filter(k => k.val).length + ' 个（少了说明解析区间被截断）');
+    eqCheck(parsedNow.filter(k => k.action).length === 5,
+        '[' + page.label + '] 从页面解析出的 data-action 键应是 5 个，实际 '
+        + parsedNow.filter(k => k.action).length + ' 个');
+});
 
 // ---------- 引擎级对照：页面脚本的假设是否成立（不依赖实现细节，只验证契约） ----------
 if (!equationEngine) {
@@ -1238,6 +1494,7 @@ if (equationEngine) {
 
 // ---------- 汇总 ----------
 console.log('=== 交互冒烟 ===');
+if (process.env.UI_SMOKE_STATS) console.log('  共执行 ' + checksRun + ' 条断言');
 if (fails.length === 0) console.log('  全部通过');
 else {
     fails.forEach(f => console.log('  ✗ ' + f));

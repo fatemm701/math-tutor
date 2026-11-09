@@ -1,0 +1,404 @@
+/* frontend/css/app-nav.css —— 左侧导航栏（四个页面共用：两个练习页、看板页、登录页）
+   页面结构在各自的 .html 里（每页同一段 <aside class="app-nav">），交互在 js/app-nav.js。
+
+   与 practice.css / teacher.html 保持同一套色值：
+     :root 是白天，html[data-theme="dark"] 覆盖成夜间模式。
+   新加样式请用变量，不要再写死 #fff / #333，否则夜间模式会漏掉。 */
+
+:root {
+    --nav-width: 220px;
+    --nav-width-collapsed: 60px;
+    --primary: #4F46E5;
+    --bg: #F9FAFB;
+    --surface: #FFFFFF;
+    --nav-bg: #FFFFFF;
+    --nav-hover: #EEF2FF;
+    --nav-active-bg: #EEF2FF;
+    --nav-caption: #9CA3AF;
+    --text: #0F172A;
+    --text-muted: #4B5563;
+    --line: #E5E7EB;
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+html[data-theme="dark"] {
+    --primary: #818CF8;
+    --bg: #1E1E2E;
+    --surface: #2A2A3C;
+    --nav-bg: #23233A;
+    --nav-hover: #30304A;
+    --nav-active-bg: #3A3560;
+    --nav-caption: #8B90A3;
+    --text: #E5E7EB;
+    --text-muted: #A6ABC0;
+    --line: #3F3F58;
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+    color-scheme: dark;
+}
+
+/* hidden 属性要压过下面各种 display:flex，否则「隐藏」的入口照样显示 */
+[hidden] {
+    display: none !important;
+}
+
+/* 有侧边栏的页面：body 变成左右两栏。
+   内容不满一屏时，.app-main 会长到视口高度、把底色铺满，
+   所以右边的内容区不会在页面下方断掉、露出 body 一截 */
+body.nav-layout {
+    display: flex;
+    align-items: stretch;
+    margin: 0;
+    min-height: 100vh;
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* 侧边栏占位：aside 在里面纵向拉伸到整列高度。
+   页面再长它也跟着长，滚到最底部也不会露出下面的背景色 */
+.app-nav-slot {
+    flex: 0 0 auto;
+    align-self: stretch;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ============================ 侧边栏 ============================ */
+.app-nav {
+    flex: 1 1 auto;
+    width: var(--nav-width);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 14px 10px 0;
+    background: var(--nav-bg);
+    border-right: 1px solid var(--line);
+    overflow-x: hidden;
+    transition: width 0.18s ease;
+    z-index: 30;
+}
+
+.app-nav-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.app-nav-toggle {
+    flex: 0 0 auto;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    font-size: 1rem;
+    line-height: 1;
+    color: var(--text-muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.app-nav-toggle:hover {
+    background: var(--nav-hover);
+}
+
+.app-nav-brand {
+    font-size: 0.95rem;
+    font-weight: bold;
+    color: var(--text);
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.app-nav-links {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.app-nav-caption {
+    margin: 10px 8px 4px;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    color: var(--nav-caption);
+}
+
+/* 一行入口：图标 + 文字 */
+.app-nav-link,
+.app-nav-group-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 0.88rem;
+    color: var(--text-muted);
+    text-align: left;
+    text-decoration: none;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.app-nav-link:hover,
+.app-nav-group-btn:hover {
+    background: var(--nav-hover);
+    color: var(--text);
+}
+
+.app-nav-link[aria-current="page"] {
+    background: var(--nav-active-bg);
+    color: var(--primary);
+    font-weight: bold;
+}
+
+/* 未登录：入口变灰、不可点 */
+.app-nav-link.is-disabled,
+.app-nav-group-btn.is-disabled {
+    color: var(--nav-caption);
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.app-nav-icon {
+    flex: 0 0 1.35em;
+    text-align: center;
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.app-nav-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 分组箭头 */
+.app-nav-caret {
+    flex: 0 0 auto;
+    margin-left: auto;
+    font-size: 0.7rem;
+    color: var(--nav-caption);
+    transition: transform 0.15s ease;
+}
+
+.app-nav-group[data-open="false"] .app-nav-caret {
+    transform: rotate(-90deg);
+}
+
+.app-nav-group[data-open="false"] .app-nav-sub {
+    display: none;
+}
+
+/* 分组子项：缩进一层，左侧一条细线 */
+.app-nav-sub {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 2px 0 2px 22px;
+    padding-left: 8px;
+    border-left: 1px solid var(--line);
+}
+
+.app-nav-sub .app-nav-link {
+    font-size: 0.85rem;
+    padding: 7px 10px;
+}
+
+/* 底部：账号 + 夜间模式 + 退出。margin-top:auto 把它顶到整列最底下，
+   所以侧边栏和页面一样高时，这三项仍然贴着底部 */
+.app-nav-foot {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 0 14px;
+    border-top: 1px solid var(--line);
+    background: var(--nav-bg);
+}
+
+.app-nav-who {
+    padding: 0 6px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.app-nav-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.app-nav-actions button,
+.app-nav-actions a.btn {
+    flex: 1 1 auto;
+    padding: 6px 8px;
+    font-family: inherit;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.app-nav-actions button:hover,
+.app-nav-actions a.btn:hover {
+    background: var(--nav-hover);
+}
+
+.app-nav-actions .primary {
+    color: #fff;
+    background: var(--primary);
+    border-color: var(--primary);
+}
+
+/* 遮罩：只在窄屏抽屉模式下出现 */
+.app-nav-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(17, 24, 39, 0.45);
+    z-index: 25;
+}
+
+/* ============================ 收起态 ============================ */
+/* 只留图标；文字和分组标题隐藏。宽屏下由菜单按钮切换 */
+body.nav-collapsed .app-nav {
+    flex-basis: var(--nav-width-collapsed);
+    width: var(--nav-width-collapsed);
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+body.nav-collapsed .app-nav-brand,
+body.nav-collapsed .app-nav-caption,
+body.nav-collapsed .app-nav-text,
+body.nav-collapsed .app-nav-caret,
+body.nav-collapsed .app-nav-who,
+body.nav-collapsed .app-nav-actions {
+    display: none;
+}
+
+body.nav-collapsed .app-nav-sub {
+    margin-left: 0;
+    padding-left: 0;
+    border-left: 0;
+}
+
+body.nav-collapsed .app-nav-link,
+body.nav-collapsed .app-nav-group-btn {
+    justify-content: center;
+    padding: 9px 0;
+}
+
+/* 收起时分组仍然展开：子项只剩图标，否则题型入口就点不到了 */
+body.nav-collapsed .app-nav-group[data-open="false"] .app-nav-sub {
+    display: flex;
+}
+
+/* ============================ 内容区 ============================ */
+/* 至少一屏高：内容少的时候底下的留白和侧边栏连成一片，
+   不会出现「右边灰、左边白、下边又灰」的断层 */
+.app-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    box-sizing: border-box;
+    background: var(--bg);
+}
+
+/* 练习页：内容仍是 500px 窄栏居中 */
+.app-main .container {
+    width: 100%;
+    max-width: 500px;
+}
+
+/* ============================ 窄屏：抽屉 ============================ */
+@media (max-width: 768px) {
+    /* 抽屉是浮层，不再占一列宽度 */
+    .app-nav-slot {
+        flex: 0 0 0;
+        width: 0;
+        min-height: 0;
+        display: block;
+    }
+
+    .app-nav {
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        height: 100%;
+        width: var(--nav-width);
+        flex-basis: var(--nav-width);
+        transform: translateX(-100%);
+        transition: transform 0.2s ease;
+        box-shadow: var(--shadow);
+    }
+
+    /* 窄屏默认收起：抽屉关着，点菜单按钮滑出。
+       滑出后按完整宽度显示文字，不沿用宽屏的「只剩图标」样子 */
+    body.nav-collapsed .app-nav {
+        width: var(--nav-width);
+        flex-basis: var(--nav-width);
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+
+    body.nav-collapsed .app-nav-brand,
+    body.nav-collapsed .app-nav-caption,
+    body.nav-collapsed .app-nav-text,
+    body.nav-collapsed .app-nav-caret,
+    body.nav-collapsed .app-nav-who {
+        display: block;
+    }
+
+    body.nav-collapsed .app-nav-actions {
+        display: flex;
+    }
+
+    body.nav-collapsed .app-nav-sub {
+        margin-left: 22px;
+        padding-left: 8px;
+        border-left: 1px solid var(--line);
+    }
+
+    body.nav-collapsed .app-nav-link,
+    body.nav-collapsed .app-nav-group-btn {
+        justify-content: flex-start;
+        padding: 8px 10px;
+    }
+
+    /* 打开抽屉 */
+    body.nav-open .app-nav {
+        transform: translateX(0);
+    }
+
+    body.nav-open .app-nav-backdrop {
+        display: block;
+    }
+
+    /* 窄屏下侧边栏不再占位，内容区铺满 */
+    .app-main {
+        padding: 14px 12px;
+    }
+}

@@ -11,15 +11,17 @@ poly-drill/
 ├─ frontend/
 │  ├─ index.html         # 登录 / 注册页
 │  ├─ practice.html      # 整式化简答题页结构（软键盘、题目/解析面板）
-│  ├─ equations.html     # 一元一次方程答题页结构（顶栏与化简页互切，多一个 = 键）
+│  ├─ equations.html     # 一元一次方程答题页结构（左侧导航切换，多一个 = 键）
 │  ├─ css/practice.css   # 练习页样式（两个练习页共用）
+│  ├─ css/app-nav.css    # 左侧导航栏样式（四页共用：收起态、分组、窄屏抽屉、夜间模式）
 │  ├─ js/
 │  │  ├─ math-core.js    # 多项式解析、展开、格式化；有理数系数（纯计算）
 │  │  ├─ poly-tree.js    # 「项 -> 括号 -> 项」树：去括号、合并同类项（两套引擎共用）
 │  │  ├─ engine-simplify.js      # 整式化简：出题、判题、分步解析、提示
 │  │  ├─ equation-engine.js      # 一元一次方程：出题、判题、分步解析、提示
 │  │  ├─ practice.js     # 化简页渲染、键盘、缓存、上报
-│  │  └─ practice-equations.js   # 方程页渲染、键盘、缓存、上报
+│  │  ├─ practice-equations.js   # 方程页渲染、键盘、缓存、上报
+│  │  └─ app-nav.js      # 左侧导航：收起/分组记忆、窄屏抽屉、当前页高亮、按角色显示看板入口
 │  ├─ teacher.html       # 看板（老师看全班；学生进来只看自己的「我的练习」）
 │  └─ vendor/            # 本地 KaTeX + mathjs（离线可用，不依赖 CDN）
 ├─ test/
@@ -27,6 +29,8 @@ poly-drill/
 │  ├─ fraction.test.js   # 分数系数：有理数运算、解析、判等、步骤、判卷、随机分数题
 │  ├─ equation.test.js   # 一元一次方程：出题质量、逐步同解、判题分支、提示、LaTeX
 │  ├─ ui.smoke.js        # 交互冒烟（两个练习页：软键盘、分数标签/斜杠输入、等号、提交、提示、看解析）
+│  ├─ nav.smoke.js       # 左侧导航冒烟（收起/分组记忆、窄屏抽屉、当前页高亮、访客/登录态）
+│  ├─ auth.smoke.js      # 登录注册页冒烟
 │  ├─ teacher.smoke.js   # 看板冒烟（老师视角 + 学生「我的练习」视角，含方程列与题型筛选）
 │  └─ api.test.js        # 接口测试（真实起服务、临时 DATA_DIR，含 topic 统计）
 ├─ data/
