@@ -8,8 +8,9 @@
 //   2. 手动标记：页面里已经写了 ?v=manual-xxx —— 有它就直接用，不再被提交号覆盖
 //   3. 当前 HEAD 提交号前 8 位
 //
-// 因为默认取提交号，改完代码提交后版本号会变一次；重复跑 `node scripts/stamp-assets.js`
-// 再提交一次即可收敛（第二次的结果表里不会再出现「已更新」）。嫌麻烦就统一用 ASSET_VERSION。
+// 因为默认取提交号，改完代码提交后版本号会变一次，再提交一次就会收敛（每次都是新提交号，
+// 所以「让每个提交自洽」需要在提交后用 --amend 再跑：「stamp → commit --amend」等价于
+// 「stamp → commit」，因此别再靠反复提交逼近，直接用 --amend 或 ASSET_VERSION）。
 //
 // 用法：
 //   node scripts/stamp-assets.js          # 写入
