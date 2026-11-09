@@ -131,6 +131,24 @@ function listen(port) {
     r = await student('GET', '/api/teacher/students');
     ok(r.status === 403, '学生访问老师接口应 403，实际 ' + r.status);
 
+    // 10b. 学生看自己的汇总（接口只认 cookie，不接受任何 userId 参数）
+    r = await student('GET', '/api/attempts/mine/summary');
+    ok(r.status === 200, '学生看自己的汇总应 200，实际 ' + r.status + ' ' + JSON.stringify(r.body));
+    const mine = r.body.data || {};
+    ok(mine.user && mine.user.name === '小明', '汇回应带上自己的身份，实际 ' + JSON.stringify(mine.user));
+    ok(!('hash' in (mine.user || {})) && !('salt' in (mine.user || {})), '汇回不该带密码字段');
+    ok(mine.stats && mine.stats.total === 7, '自己的汇总应为 7 条，实际 ' + (mine.stats || {}).total);
+    ok(mine.stats && mine.stats.correctCount === 2 && mine.stats.revealed === 1,
+        '自己的汇总口径应与看板一致，实际 ' + JSON.stringify({ c: mine.stats && mine.stats.correctCount, r: mine.stats && mine.stats.revealed }));
+    ok(mine.stats && mine.stats.fraction && mine.stats.fraction.total === 2, '自己的分数题应为 2 条');
+    ok(mine.counts && mine.counts.all.correct[2].fraction === 1, '自己的计数应和看板一致');
+    ok(typeof mine.now === 'number', '应返回服务端当前时间戳');
+    r = await anon('GET', '/api/attempts/mine/summary');
+    ok(r.status === 401, '未登录看汇总应 401，实际 ' + r.status);
+    r = await teacher('GET', '/api/attempts/mine/summary');
+    ok(r.status === 200, '老师也能用这个接口看自己，实际 ' + r.status);
+    ok(r.body.data.stats.total === 0, '老师此刻还没练过，应为 0 条，实际 ' + r.body.data.stats.total);
+
 
     // 11. 老师看统计（提示后做对算对；提示后错、没化简完、格式错、看解析算错）
     r = await teacher('GET', '/api/teacher/students');

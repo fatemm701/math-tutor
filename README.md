@@ -24,6 +24,12 @@
 - 点学生看最近 100 条明细
 - 添加学生账号；「我自己」面板单独统计老师本人的练习，不混入学生数据
 
+**学生自查**（同一页 `frontend/teacher.html`，练习页顶栏「看板」对登录用户都可见）
+
+- 学生点「看板」只看自己的「我的练习」：和老师看板同一套口径的汇总卡、同样的筛选条、一句「哪档练得多、哪档还没碰」的提示、最近 100 条明细
+- 数据只来自 `GET /api/attempts/mine/summary`（服务端只认当前会话，不接受任何 userId 参数），学生拿不到其他学生的任何数据，也看不到添加学生表单
+- 老师打开时仍是原来的看板（学生列表 + 明细 + 添加学生 + 「我自己」）
+
 **账号**
 
 - 口令用 scrypt 加盐哈希，会话走随机 session id + HttpOnly Cookie
@@ -46,6 +52,7 @@ backend/
   server.js            Express 入口、静态托管、/api/health
   auth.js              scrypt 哈希、会话、登录限速
   store.js             db.json 读写（原子写）
+  scoring.js           计分口径与筛选计数（老师看板与学生自查共用）
   routes/              auth / attempts / teacher 三组接口
 frontend/
   index.html           登录 / 注册
@@ -102,8 +109,8 @@ npm test
 | `fraction.test.js` | 分数系数：有理数规范化/四则/乘方、解析、格式化、判等、分步解析、判卷、四档随机分数题生成，以及上下分式 LaTeX 转换（约 3360 条） |
 | `ui.smoke.js` | 加载 `practice.js`：渲染、提示、答对/错两次/看解析的解析展示、锁键盘、下一题、分数标签与 `/` 输入、`x`/`y` 斜体键与「清空」键、夜间模式开关（默认亮色、切换、记住、重进恢复） |
 | `auth.smoke.js` | 登录注册页：角色切换、字段可见性、提交字段名、跳转 |
-| `teacher.smoke.js` | 看板渲染、分数列/汇总卡/明细标签与详情切换、列表与明细筛选、夜间模式开关 |
-| `api.test.js` | 53 条接口断言（真实起服务 + 临时数据目录），含 tags 过滤/去重与分数统计 |
+| `teacher.smoke.js` | 老师的看板渲染、分数列/汇总卡/明细标签与详情切换、列表与明细筛选、夜间模式开关；学生进来看到的「我的练习」汇总/筛选/明细/返回 |
+| `api.test.js` | 86 条接口断言（真实起服务 + 临时数据目录），含 tags 过滤/去重、分数统计、只读自己汇总的越权防护 |
 
 页面测试用最小 DOM 桩跑 Node，不需要浏览器；加载 `frontend/js/practice.js` 和 `frontend/vendor/math.js`，与浏览器实际一致。
 
@@ -126,12 +133,14 @@ GET  /api/auth/me
 POST /api/attempts           { clientId, level, question, answer, studentAnswer,
                                result, usedHint, revealed, tags?, ms }
 GET  /api/attempts/mine?limit=20
+GET  /api/attempts/mine/summary            只看自己的汇总 + 筛选计数（学生自查用）
 GET  /api/teacher/students
 GET  /api/teacher/attempts?studentId=...&limit=100
 POST /api/teacher/students   { name, password }
 ```
 
-`result` 取值 `correct` / `wrong` / `partial` / `error`；`tags` 目前只接受 `fraction`（用于区分分数系数题，未知标签会被静默丢弃）；带同一个 `clientId` 重复上报只记一次。
+`result` 取值 `correct` / `wrong` / `parentheses`（答案对但没去括号）/ `unmerged`（答案对但没合并同类项）/ `error`；旧客户端的 `partial` 写入时自动归到 `unmerged`。可选 `gaveUp: true` 表示学生主动点了「看解析」（用来把「看解析」和「错两次被动给解析」分开计分）。
+`tags` 目前只接受 `fraction`（用于区分分数系数题，未知标签会被静默丢弃）；带同一个 `clientId` 重复上报只记一次。
 所有响应统一为 `{ success: true, data }` 或 `{ success: false, msg }`。
 
 ## 说明

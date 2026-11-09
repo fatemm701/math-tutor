@@ -2,6 +2,7 @@
 const express = require('express');
 const store = require('../store');
 const auth = require('../auth');
+const scoring = require('../scoring');
 
 const router = express.Router();
 
@@ -80,6 +81,22 @@ router.get('/mine', auth.requireLogin, (req, res) => {
         .slice(-limit)
         .reverse();
     res.json({ success: true, data: { attempts: list } });
+});
+
+// 学生自己看自己的统计：只看本人记录，不接受任何 userId 参数，从接口层杜绝越权。
+// 计分口径与老师看板共用 backend/scoring.js，两边数字天然一致。
+router.get('/mine/summary', auth.requireLogin, (req, res) => {
+    const now = Date.now();
+    const list = store.getDb().attempts.filter(a => a.userId === req.user.id);
+    res.json({
+        success: true,
+        data: {
+            user: auth.publicUser(req.user),
+            stats: scoring.summarize(list),
+            counts: scoring.buildCounts(list, now),
+            now
+        }
+    });
 });
 
 module.exports = router;

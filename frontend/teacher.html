@@ -28,7 +28,6 @@
             --text-head: #6B7280;
             --row-hover: #F9FAFB;
             --soft-btn-bg: #EEF2FF;
-            --denied-text: #6B7280;
             --danger: #EF4444;
             --ok: #047857;
             --tag-correct-bg: #ECFDF5; --tag-correct-fg: #047857;
@@ -53,7 +52,6 @@
             --text-head: #9AA0B5;
             --row-hover: #30304A;
             --soft-btn-bg: #383560;
-            --denied-text: #A6ABC0;
             --danger: #F87171;
             --ok: #34D399;
             --tag-correct-bg: #123528; --tag-correct-fg: #5EEAD4;
@@ -424,23 +422,6 @@
             padding: 0;
             cursor: pointer;
         }
-
-        /* 学生误入：只有老师能看 */
-        .denied {
-            background: var(--surface);
-            border-radius: 12px;
-            padding: 28px 20px;
-            text-align: center;
-            color: var(--denied-text);
-            font-size: 0.9rem;
-            line-height: 1.9;
-        }
-
-        .denied a {
-            color: var(--primary);
-            font-weight: bold;
-            text-decoration: none;
-        }
     </style>
 </head>
 
@@ -458,10 +439,19 @@
     <div class="wrap">
         <div class="cards" id="summary"></div>
 
-        <div class="denied" id="denied" hidden>
-            当前账号是学生，看板只有老师能打开。<br>
-            <a href="practice.html">去练习 →</a>
-        </div>
+        <section class="panel" id="mine-view" hidden>
+            <div class="section-head">
+                <h2>我的练习</h2>
+                <span class="hint" id="mine-updated"></span>
+            </div>
+            <div class="filter-bar" id="mine-filter"></div>
+            <p class="filter-summary" id="mine-filter-summary"></p>
+            <p class="hint" id="mine-suggestion"></p>
+            <div class="self-line">
+                <span class="hint">只统计你自己做的题，别人看不到这里。</span>
+                <button type="button" class="mini" id="mine-detail">看全部明细</button>
+            </div>
+        </section>
 
         <section class="panel" id="self-view" hidden>
             <div class="section-head">
@@ -816,6 +806,8 @@
             const correctCount = CORRECT_KEYS.reduce((n, k) => n + (totals[k] || 0), 0);
             const accuracy = totals.total ? Math.round((correctCount / totals.total) * 1000) / 10 : null;
             const hinted = (totals.hintedCorrect || 0) + (totals.hintedWrong || 0);
+            const avgText = (studentCount && typeof studentCount === 'object') ? studentCount.note : avgMs;
+            const onlyMine = !!(studentCount && typeof studentCount === 'object');
             const items = [
                 { k: '学生', v: studentCount + ' 人' },
                 { k: '记录数', v: totals.total + ' 条' },
@@ -826,9 +818,11 @@
                 { k: '用过提示', v: hinted + ' 题' },
                 { k: '看解析', v: (totals.revealed || 0) + ' 题' },
                 { k: '分数题（对/总）', v: fracText(totals) },
-                { k: '平均用时', v: avgMs }
+                { k: '平均用时', v: avgText }
             ];
-            items.forEach(item => {
+            // 学生看自己时没有「几个学生」这回事，第二张卡空着不如不显示
+            const shown = onlyMine ? items.slice(1) : items;
+            shown.forEach(item => {
                 const box = document.createElement('div');
                 box.className = 'card';
                 const k = document.createElement('div');
@@ -1016,6 +1010,69 @@
             renderAttempts(detailList);
         }
 
+        // ---------- 学生视角：我的练习 ----------
+        const mineFilter = emptyFilter();
+        let mineCounts = null;
+        let mineStats = null;
+
+        // 用后端数好的稀疏计数，筛选时不用重新请求
+        function mineTotals() {
+            const totals = countsOfFilter(mineFilter, mineCounts);
+            totals.totalFraction = 0;
+            totals.correctFraction = 0;
+            // 稀疏计数里没有按题型的「总数」，分数题的总数和算对数只能回原始汇总（stats.fraction）
+            const frac = (mineStats && mineStats.fraction) || null;
+            const filterKind = mineFilter.kind;
+            const needFraction = !filterKind || filterKind === 'fraction';
+            if (needFraction && frac) {
+                totals.totalFraction = frac.total || 0;
+                totals.correctFraction = (frac.correct || 0) + (frac.hintedCorrect || 0);
+            }
+            return totals;
+        }
+
+        function mineAvgMs(totals, stats) {
+            if (!stats) return '—';
+            if (!isFilterActive(mineFilter)) return fmtMs(stats.avgMs);
+            // 稀疏计数里没有时长，筛选后不给平均用时，免得看着像「平均 0 秒」
+            const exactlyAll = !mineFilter.result && !mineFilter.level && !mineFilter.kind;
+            return exactlyAll ? fmtMs(stats.avgMs) : '—';
+        }
+
+        // 一句人话提示：哪档练得最多、哪档还没碰
+        function mineSuggestion(stats) {
+            if (!stats || !stats.total) return '还没做过题，去练习页做几题，这里就有数据了。';
+            const rows = (stats.byLevel || []).filter(r => r.total > 0);
+            if (!rows.length) return '还没做过题，去练习页做几题，这里就有数据了。';
+            const most = rows.reduce((a, b) => (b.total > a.total ? b : a));
+            const least = rows.reduce((a, b) => (b.total < a.total ? b : a));
+            const label = (level) => (LEVEL_OPTIONS.find(o => o.key === String(level)) || { text: '第 ' + level + ' 档' }).text;
+            let text = '一共做了 ' + stats.total + ' 题，正确率 ' + fmtPct(stats.accuracy)
+                + '。练得最多的是 ' + label(most.level) + '（' + most.total + ' 题）';
+            if (most.level !== least.level) {
+                text += '，' + label(least.level) + '只做了 ' + least.total + ' 题';
+            }
+            return text + '。';
+        }
+
+        function refreshMine() {
+            const totals = mineTotals();
+            renderSummary(totals, { studentCount: null, note: mineAvgMs(totals, mineStats) });
+            renderFilterBar($('mine-filter'), mineFilter, refreshMine);
+            $('mine-filter-summary').textContent = filterSummaryText(totals.total, mineStats ? mineStats.total : totals.total);
+            $('mine-suggestion').textContent = mineSuggestion(mineStats);
+        }
+
+        async function loadMine() {
+            const data = await api('/api/attempts/mine/summary');
+            mineStats = data.stats || null;
+            mineCounts = data.counts || null;
+            $('mine-updated').textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN', { hour12: false });
+            $('mine-view').hidden = false;
+            $('list-view').hidden = true;
+            refreshMine();
+        }
+
         // ---------- 数据 ----------
         let detailUser = null;
         let detailSource = 'student';
@@ -1061,6 +1118,7 @@
             detailSource = source === 'self' ? 'self' : 'student';
             $('list-view').hidden = true;
             $('self-view').hidden = true;
+            $('mine-view').hidden = true;
             $('detail-view').hidden = false;
             $('detail-title').textContent = user.name + ' 的做题记录';
             $('detail-body').innerHTML = '';
@@ -1088,6 +1146,10 @@
 
         function backToList() {
             $('detail-view').hidden = true;
+            if (currentUser && currentUser.role === 'student') {
+                $('mine-view').hidden = false;      // 学生从「我的练习」进去的，回到那里
+                return;
+            }
             $('list-view').hidden = false;
             if (selfInfo) $('self-view').hidden = false;
         }
@@ -1131,11 +1193,17 @@
             if (selfInfo) openDetail(selfInfo.user, 'self');
         });
 
+        $('mine-detail').addEventListener('click', () => {
+            if (currentUser) openDetail(currentUser, 'self');
+        });
+
         $('refresh').addEventListener('click', async () => {
             const btn = $('refresh');
             btn.disabled = true;
             try {
-                if (!$('detail-view').hidden && detailUser) {
+                if (currentUser && currentUser.role === 'student') {
+                    await loadMine();
+                } else if (!$('detail-view').hidden && detailUser) {
                     await openDetail(detailUser, detailSource);
                 } else {
                     await load();
@@ -1201,9 +1269,10 @@
                     return;
                 }
                 if (user.role !== 'teacher') {
-                    $('who').textContent = '当前账号：学生 ' + user.name;
-                    $('denied').hidden = false;
-                    $('list-view').hidden = true;
+                    // 学生也能进来，只是只看自己的：「我的练习」
+                    currentUser = user;
+                    $('who').textContent = '学生：' + user.name;
+                    await loadMine();
                     return;
                 }
 

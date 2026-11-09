@@ -302,7 +302,7 @@ check(posts.every(p => p.question.includes('/') === (p.tags.includes('fraction')
 
 // 11. 顶部显示当前学生
 check(/小明/.test(whoEl.textContent), '顶部应显示学生姓名，实际: ' + whoEl.textContent);
-check(boardEl.hidden === true, '学生不该看到「看板」入口');
+check(boardEl.hidden === false, '学生也应看到「看板」入口（进去只看自己）');
 
 // 12. KaTeX 渲染失败时要退化成纯文本，题目仍然看得见
 katex.render = () => { throw new Error('simulated katex failure'); };

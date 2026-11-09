@@ -42,6 +42,7 @@ class El {
 const IDS = [
     'who', 'summary', 'denied', 'list-view', 'students-body', 'list-empty', 'updated',
     'self-view', 'self-stats', 'self-detail',
+    'mine-view', 'mine-updated', 'mine-filter', 'mine-filter-summary', 'mine-suggestion', 'mine-detail',
     'add-name', 'add-pass', 'add-btn', 'add-msg', 'add-form',
     'detail-view', 'detail-title', 'detail-body', 'detail-empty', 'detail-msg',
     'list-filter', 'list-filter-summary', 'detail-filter', 'detail-filter-summary',
@@ -51,6 +52,8 @@ const IDS = [
 function makeDom() {
     const byId = {};
     IDS.forEach(id => { byId[id] = new El(id === 'add-form' ? 'form' : 'div', id); });
+    // 页面里默认隐藏的视图：挨个标成 hidden，和 HTML 里的 hidden 属性对齐
+    ['self-view', 'mine-view', 'detail-view', 'denied'].forEach(id => { byId[id].hidden = true; });
     const documentElement = new El('html');
     return {
         byId,
@@ -189,14 +192,55 @@ const selfPayload = {
     counts: EMPTY_COUNTS()
 };
 
-function makeFetch(role, apiCalls) {
+// 学生自己点「看板」时后端 /api/attempts/mine/summary 返回的内容
+// 8 条：独立对 4（L1 整数 1、L2 整数 2、L2 分数 1）、提示后对 1（L3 分数）、
+// 没合并同类项 1（L1 整数）、格式错 1（L2 整数）、看解析 1（L4 整数）
+function countsMine() {
+    const c = EMPTY_COUNTS();
+    c.all.correct[1].integer = 1;
+    c.all.correct[2].integer = 2;
+    c.all.correct[2].fraction = 1;
+    c.all.hintedCorrect[3].fraction = 1;
+    c.all.unmerged[1].integer = 1;
+    c.all.error[2].integer = 1;
+    c.all.revealed[4].integer = 1;
+    c.week.correct[1].integer = 1;
+    c.week.correct[2].integer = 2;
+    c.week.correct[2].fraction = 1;
+    c.week.hintedCorrect[3].fraction = 1;
+    c.today.correct[2].fraction = 1;
+    return c;
+}
+
+const minePayload = {
+    user: { id: 'u_s', name: '学生甲', role: 'student' },
+    stats: {
+        total: 8, correct: 4, hintedCorrect: 1, hintedWrong: 0, hinted: 1, wrong: 0,
+        unmerged: 1, error: 1, revealed: 1, gaveUp: 1, scored: 8, correctCount: 5,
+        accuracy: 62.5, avgMs: 9000, lastAt: now,
+        fraction: Object.assign(fractionZero(), {
+            total: 2, correct: 1, hintedCorrect: 1, hinted: 1,
+            scored: 2, correctCount: 2, accuracy: 100, avgMs: 11000
+        }),
+        byLevel: [
+            { level: 1, total: 2, correct: 1, avgMs: 7000, accuracy: 50 },
+            { level: 2, total: 4, correct: 3, avgMs: 8000, accuracy: 75 },
+            { level: 3, total: 1, correct: 1, avgMs: 12000, accuracy: 100 },
+            { level: 4, total: 1, correct: 0, avgMs: 20000, accuracy: 0 }
+        ]
+    },
+    counts: countsMine(),
+    now
+};
+
+function makeFetch(role, apiCalls, opts) {
     const json = (body, status) => ({
         ok: !status || status < 400,
         status: status || 200,
         json: async () => body
     });
-    return async (url, opts) => {
-        apiCalls.push({ url, opts: opts || {} });
+    return async (url, fetchOpts) => {
+        apiCalls.push({ url, opts: fetchOpts || {} });
         if (url === '/api/auth/me') {
             const user = role === 'teacher'
                 ? { id: 'u_t', name: '王老师', role: 'teacher', inviteCode: 'TZDGJG' }
@@ -204,11 +248,32 @@ function makeFetch(role, apiCalls) {
             return json({ success: true, data: { user } });
         }
         if (url === '/api/teacher/students') {
-            if (opts && opts.method === 'POST') {
+            if (fetchOpts && fetchOpts.method === 'POST') {
                 return json({ success: true, data: { user: { id: 'u_new', name: '张三', role: 'student' } } });
             }
             // 故意把小红排在前面，页面应按「最近做过」重排
             return json({ success: true, data: { students: [studentB, studentA], self: selfPayload } });
+        }
+        if (url === '/api/attempts/mine/summary') {
+            // 老师也走这个接口看自己（主页面的「我自己」用的是 selfPayload），这里统一给老师的记录
+            if (role === 'teacher') {
+                return json({ success: true, data: { user: selfPayload.user, stats: selfPayload.stats, counts: selfPayload.counts, now } });
+            }
+            if (opts && opts.mineEmpty) {
+                return json({
+                    success: true,
+                    data: {
+                        user: minePayload.user,
+                        stats: Object.assign({}, minePayload.stats, {
+                            total: 0, correct: 0, hintedCorrect: 0, hinted: 0, scored: 0, correctCount: 0,
+                            accuracy: null, avgMs: 0, lastAt: null, fraction: fractionZero(), byLevel: zeroLevels
+                        }),
+                        counts: EMPTY_COUNTS(),
+                        now
+                    }
+                });
+            }
+            return json({ success: true, data: minePayload });
         }
         if (url.indexOf('/api/attempts/mine') === 0) {
             return json({ success: true, data: { attempts: attemptsPayload } });
@@ -242,7 +307,7 @@ async function boot(role, options) {
         }
     };
     const page = new Function('document', 'location', 'fetch', 'katex', 'localStorage', inline + '\n');
-    page(dom.document, location, makeFetch(role, apiCalls), katexStub, store);
+    page(dom.document, location, makeFetch(role, apiCalls, opts), katexStub, store);
     await settle();
     await settle();
     return { dom, apiCalls, location, store };
@@ -254,6 +319,24 @@ const cells = (el) => (el && el.children) || [];
 const text = (el) => (el ? String(el.textContent) : null);
 // 汇总卡片：「标题=数值」列表
 const formatCards = (box) => cells(box).map(c => text(cells(c)[0]) + '=' + text(cells(c)[1]));
+const chipOf = (el) => ({
+    field: (el.dataset && el.dataset.field) || el.getAttribute('data-field'),
+    value: (el.dataset && el.dataset.value) || el.getAttribute('data-value')
+});
+// 筛选条重绘时 box.innerHTML = '' 会清空 children，所以每点一次都重新取一遍
+const findChip = (box, field, value) => cells(box)
+    .flatMap(line => cells(line))
+    .filter(el => { const c = chipOf(el); return c.field === field && String(c.value) === String(value); })[0];
+const clickChip = function (box, field, value) {
+    const chip = findChip(box, field, value);
+    check(!!chip, '筛选里应点得到 ' + field + '=' + value);
+    if (chip) (chip.handlers.click || []).forEach(fn => fn({}));
+};
+const chipsOn = (box) => cells(box)
+    .flatMap(line => cells(line))
+    .filter(el => el.getAttribute && el.getAttribute('data-field'))
+    .filter(el => /(^|\s)on(\s|$)/.test(el.className))
+    .map(el => el.getAttribute('data-field') + ':' + el.getAttribute('data-value'));
 
 (async () => {
     // ---------- 1. 老师身份 ----------
@@ -278,11 +361,6 @@ const formatCards = (box) => cells(box).map(c => text(cells(c)[0]) + '=' + text(
         '看板应有筛选汇总文案，实际: ' + text(t.dom.byId['list-filter-summary']));
 
     // ---------- 1b. 筛选条初始选中态 ----------
-    const chipsOn = (box) => cells(box)
-        .flatMap(line => cells(line))
-        .filter(el => el.getAttribute && el.getAttribute('data-field'))
-        .filter(el => /(^|\s)on(\s|$)/.test(el.className))
-        .map(el => el.getAttribute('data-field') + ':' + el.getAttribute('data-value'));
     let onNow = chipsOn(t.dom.byId['list-filter']);
     check(onNow.indexOf('result:') >= 0, '结果筛选初始应选中「全部」，实际 ' + JSON.stringify(onNow));
     check(onNow.indexOf('kind:') >= 0, '题型筛选初始应选中「全部」，实际 ' + JSON.stringify(onNow));
@@ -353,10 +431,6 @@ const formatCards = (box) => cells(box).map(c => text(cells(c)[0]) + '=' + text(
         '明细页应有筛选汇总文案，实际: ' + text(t.dom.byId['detail-filter-summary']));
 
     // ---------- 3b. 明细页筛选 ----------
-    const chipOf = (el) => ({
-        field: (el.dataset && el.dataset.field) || el.getAttribute('data-field'),
-        value: (el.dataset && el.dataset.value) || el.getAttribute('data-value')
-    });
     const offResultChip = function () {
         const chip = cells(t.dom.byId['detail-filter'])
             .flatMap(line => cells(line))
@@ -369,10 +443,6 @@ const formatCards = (box) => cells(box).map(c => text(cells(c)[0]) + '=' + text(
         if (chip) (chip.handlers.click || []).forEach(fn => fn({}));
     };
     const chipRows = (box) => cells(box).map(line => cells(line).map(chipOf));
-    // 筛选条重绘时 box.innerHTML = '' 会清空 children，所以每点一次都重新取一遍
-    const findChip = (box, field, value) => cells(box)
-        .flatMap(line => cells(line))
-        .filter(el => { const c = chipOf(el); return c.field === field && String(c.value) === String(value); })[0];
     clickChip(t.dom.byId['detail-filter'], 'result', 'unmerged');
     let shown = cells(t.dom.byId['detail-body']);
     check(shown.length === 1, '筛「没化简完」后应只剩 1 条，实际 ' + shown.length);
@@ -503,12 +573,67 @@ const formatCards = (box) => cells(box).map(c => text(cells(c)[0]) + '=' + text(
     check(/至少 6 位/.test(text(t.dom.byId['add-msg'])), '密码太短应本地拦下，实际: ' + text(t.dom.byId['add-msg']));
     check(t.apiCalls.filter(c => c.opts.method === 'POST').length === 1, '密码太短不应发出请求');
 
-    // ---------- 7. 学生身份打不开 ----------
+    // ---------- 7. 学生身份：只看自己的「我的练习」 ----------
     const s = await boot('student');
-    check(s.dom.byId['denied'].hidden === false, '学生进来应显示无权提示');
+    check(s.dom.byId['mine-view'].hidden === false, '学生进来应看到「我的练习」面板');
     check(s.dom.byId['list-view'].hidden === true, '学生进来不该显示学生列表');
-    check(/学生/.test(text(s.dom.byId['who'])), '顶部应提示当前是学生');
-    check(s.apiCalls.every(c => c.url === '/api/auth/me'), '学生身份不该请求老师接口');
+    check(s.dom.byId['self-view'].hidden === true, '学生不该看到「我自己」那块');
+    check(/学生/.test(text(s.dom.byId['who'])) && /学生甲/.test(text(s.dom.byId['who'])),
+        '顶部应显示学生身份，实际 ' + text(s.dom.byId['who']));
+    check(s.apiCalls.every(c => c.url === '/api/auth/me' || c.url === '/api/attempts/mine/summary'),
+        '学生身份只该请求自己的汇总，实际 ' + JSON.stringify(s.apiCalls.map(c => c.url)));
+
+    // 学生视角没有「几个学生」这张卡，其余和看板同一套口径
+    const mineCards = formatCards(s.dom.byId['summary']);
+    check(mineCards.length === 9, '学生视角应有 9 张卡（去掉「学生 N 人」），实际 ' + mineCards.length + ' ' + JSON.stringify(mineCards));
+    check(mineCards[0] === '记录数=8 条', '自己的记录数不对: ' + mineCards[0]);
+    check(mineCards[1] === '正确率（提示算对，看解析算错）=62.5%', '自己的正确率不对: ' + mineCards[1]);
+    check(mineCards[2] === '独立做对=4 题', '自己的独立做对不对: ' + mineCards[2]);
+    check(mineCards[3] === '提示后对=1 题', '自己的提示后对不对: ' + mineCards[3]);
+    check(mineCards[4] === '错误=2 题', '自己的错误数不对: ' + mineCards[4]);
+    check(mineCards[6] === '看解析=1 题', '自己的看解析数不对: ' + mineCards[6]);
+    check(mineCards[7] === '分数题（对/总）=2/2', '自己的分数题不对: ' + mineCards[7]);
+    check(mineCards[8] === '平均用时=9 秒', '自己的平均用时不对: ' + mineCards[8]);
+    check(/筛选后 8 条 \/ 全部 8 条/.test(text(s.dom.byId['mine-filter-summary'])),
+        '我的练习应有筛选汇总文案，实际: ' + text(s.dom.byId['mine-filter-summary']));
+    check(/练得最多的是 ② 基础/.test(text(s.dom.byId['mine-suggestion'])),
+        '应给出档位建议，实际: ' + text(s.dom.byId['mine-suggestion']));
+    check(/③ 进阶只做了 1 题/.test(text(s.dom.byId['mine-suggestion'])),
+        '应点出练得最少的档位，实际: ' + text(s.dom.byId['mine-suggestion']));
+
+    // 学生也能筛自己的记录
+    const mineChipsOn = () => chipsOn(s.dom.byId['mine-filter']);
+    check(mineChipsOn().indexOf('kind:') >= 0, '我的练习筛选初始应选中题型「全部」');
+    clickChip(s.dom.byId['mine-filter'], 'kind', 'fraction');
+    const mineFrac = formatCards(s.dom.byId['summary']);
+    check(mineFrac[0] === '记录数=2 条', '只看分数题应为 2 条，实际 ' + mineFrac[0]);
+    check(mineFrac[7] === '分数题（对/总）=2/2', '只看分数题时分数题卡应为 2/2，实际 ' + mineFrac[7]);
+    check(mineFrac[8] === '平均用时=—', '筛选后平均用时不该给不准的数，实际 ' + mineFrac[8]);
+    check(/筛选后 2 条 \/ 全部 8 条/.test(text(s.dom.byId['mine-filter-summary'])),
+        '我的练习筛选文案不对: ' + text(s.dom.byId['mine-filter-summary']));
+    clickChip(s.dom.byId['mine-filter'], 'kind', 'fraction');   // 点同一项取消
+    check(formatCards(s.dom.byId['summary'])[0] === '记录数=8 条', '取消筛选后应回到 8 条');
+
+    // 学生看自己的明细，返回时回到「我的练习」
+    (s.dom.byId['mine-detail'].handlers.click || []).forEach(fn => fn({}));
+    await settle();
+    await settle();
+    check(s.dom.byId['detail-view'].hidden === false, '点「看全部明细」应打开明细视图');
+    check(s.dom.byId['mine-view'].hidden === true, '看明细时应收起「我的练习」');
+    check(/学生甲 的做题记录/.test(text(s.dom.byId['detail-title'])),
+        '明细标题不对: ' + text(s.dom.byId['detail-title']));
+    check(cells(s.dom.byId['detail-body']).length === 4, '明细应有 4 行，实际 ' + cells(s.dom.byId['detail-body']).length);
+    check(s.apiCalls.some(c => /^\/api\/attempts\/mine/.test(c.url)), '学生看明细应走自己的接口');
+    (s.dom.byId['back'].handlers.click || []).forEach(fn => fn({}));
+    check(s.dom.byId['detail-view'].hidden === true, '点返回应关掉明细');
+    check(s.dom.byId['mine-view'].hidden === false, '学生点返回应回到「我的练习」，而不是学生列表');
+    check(s.dom.byId['list-view'].hidden === true, '学生点返回不该露出学生列表');
+
+    // 还没做过题的学生：给一句去练习的提示
+    const fresh = await boot('student', { mineEmpty: true });
+    check(/还没做过题/.test(text(fresh.dom.byId['mine-suggestion'])),
+        '没有记录时应提示去练习，实际: ' + text(fresh.dom.byId['mine-suggestion']));
+    check(formatCards(fresh.dom.byId['summary'])[0] === '记录数=0 条', '没有记录时记录数应为 0');
 
     // ---------- 8. KaTeX 挂了也要能看 ----------
     const k = await boot('teacher', { katexBroken: true });

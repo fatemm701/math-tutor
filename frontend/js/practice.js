@@ -147,7 +147,8 @@
                     whoEl.textContent = roleLabel + '：' + user.name + invite;
                 }
                 const boardLink = document.getElementById('board-link');
-                if (boardLink) boardLink.hidden = user.role !== 'teacher';   // 只有老师能进看板
+                // 登录后都能进看板：老师看全班，学生只看自己（页面内部按角色分流）
+                if (boardLink) boardLink.hidden = false;
             }
 
             function makeClientId() {

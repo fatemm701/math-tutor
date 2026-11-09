@@ -3,9 +3,10 @@ poly-drill/
 │  ├─ server.js          # Express 入口：静态页面 + 账号/记录 API + /api/health
 │  ├─ store.js           # data/db.json 读写（临时文件 + rename 原子落盘、会话清理）
 │  ├─ auth.js            # scrypt 密码哈希、会话 Cookie、登录/老师权限中间件
+│  ├─ scoring.js         # 计分口径 + 筛选计数（老师看板与学生自查共用，纯计算）
 │  └─ routes/
 │     ├─ auth.js         # 注册 / 登录 / 登出 / 当前用户（含登录失败限速）
-│     ├─ attempts.js     # 做题记录上报 / 查自己的记录
+│     ├─ attempts.js     # 做题记录上报 / 查自己的记录 / 自己的汇总
 │     └─ teacher.js      # 看板数据（学生汇总 / 明细 / 我自己）+ 直接添加学生
 ├─ frontend/
 │  ├─ index.html         # 登录 / 注册页
@@ -15,13 +16,13 @@ poly-drill/
 │  │  ├─ math-core.js    # 多项式解析、展开、格式化；有理数系数（纯计算）
 │  │  ├─ engine-simplify.js # 整式化简：出题、判题、分步解析、提示
 │  │  └─ practice.js     # 渲染、键盘、缓存、上报
-│  ├─ teacher.html       # 老师看板
+│  ├─ teacher.html       # 看板（老师看全班；学生进来只看自己的「我的练习」）
 │  └─ vendor/            # 本地 KaTeX + mathjs（离线可用，不依赖 CDN）
 ├─ test/
 │  ├─ engine.test.js     # 直接加载 math-core.js + engine-simplify.js
 │  ├─ fraction.test.js   # 分数系数：有理数运算、解析、判等、步骤、判卷、随机分数题
 │  ├─ ui.smoke.js        # 交互冒烟（软键盘、分数标签/斜杠输入、提交、提示、看解析）
-│  ├─ teacher.smoke.js   # 看板冒烟
+│  ├─ teacher.smoke.js   # 看板冒烟（老师视角 + 学生「我的练习」视角）
 │  └─ api.test.js        # 接口测试（真实起服务、临时 DATA_DIR）
 ├─ data/
 │  └─ db.json            # 运行时生成，已 gitignore；Docker 里挂在 /app/data
