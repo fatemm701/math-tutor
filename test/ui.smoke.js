@@ -455,6 +455,10 @@ check(htmlKeys.filter(k => k.action === 'clear').length === 1, '页面软键盘�
 check(htmlKeys.filter(k => /\bvar\b/.test(k.classes)).map(k => k.val).sort().join(',') === 'x,y',
     '页面上带数学斜体的键应正好是 x、y');
 check(htmlKeys.length === 24, '软键盘应为 24 个键（提交按钮单独统计），实际 ' + htmlKeys.length);
+// 第四排：0、x、y、左右括号（按页面里的文档顺序）
+const valKeys = htmlKeys.filter(k => k.val).map(k => k.val);
+check(valKeys.slice(-5).join(',') === '0,x,y,(,)',
+    '第四排按键应为 0 x y ( )，实际 ' + valKeys.slice(-5).join(','));
 check(htmlKeys.filter(k => k.action === 'backspace').length === 1 &&
     htmlKeys.filter(k => k.action === 'hint').length === 1 &&
     htmlKeys.filter(k => k.action === 'giveup').length === 1,
