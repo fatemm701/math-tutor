@@ -56,6 +56,49 @@
         }
 
         // ==========================================
+        // 1d. 夜间模式：白天/夜间靠 <html data-theme="dark"> 切换，颜色全在 CSS 变量里
+        //     （practice.html 的 <head> 里另有一小段脚本负责首帧前恢复主题，避免闪白）
+        // ==========================================
+        const THEME_KEY = 'poly-theme';
+
+        function readTheme() {
+            try {
+                return localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light';
+            } catch (e) {
+                // 隐私模式下 localStorage 可能直接抛错：当作没选过
+                const attr = document.documentElement && document.documentElement.getAttribute
+                    ? document.documentElement.getAttribute('data-theme') : null;
+                return attr === 'dark' ? 'dark' : 'light';
+            }
+        }
+
+        function applyTheme(theme, btn) {
+            const dark = theme === 'dark';
+            if (document.documentElement) {
+                if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+                else document.documentElement.removeAttribute('data-theme');
+            }
+            if (btn) {
+                btn.textContent = dark ? '☀️' : '🌙';
+                btn.title = dark ? '白天模式' : '夜间模式';
+                btn.setAttribute('aria-pressed', dark ? 'true' : 'false');
+            }
+            try {
+                localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light');
+            } catch (e) { /* 记不住就算了，本次会话内照样能切 */ }
+        }
+
+        function initThemeToggle() {
+            const btn = document.getElementById('theme-toggle');
+            if (!btn) return;
+            // 首帧的状态由 <head> 里的脚本决定，这里只把按钮图标对齐
+            applyTheme(readTheme(), btn);
+            btn.addEventListener('click', () => {
+                applyTheme(readTheme() === 'dark' ? 'light' : 'dark', btn);
+            });
+        }
+
+        // ==========================================
         // 2. 前端交互与防作弊逻辑
         // ==========================================
         window.onload = async () => {
@@ -214,7 +257,7 @@
             function renderInput() {
                 if (currentInput === "") {
                     inEl.textContent = "请点击下方键盘输入";
-                    inEl.style.color = "#9CA3AF";
+                    inEl.style.color = "var(--placeholder)";
                     return;
                 }
                 inEl.style.color = "var(--primary)";
@@ -353,7 +396,7 @@
 
                     showSteps(beforeGiveUp);
                     fbEl.textContent = "标准答案如上，完整过程在下面。看完点「下一题」继续。";
-                    fbEl.style.color = '#F59E0B';
+                    fbEl.style.color = 'var(--warn)';
 
                     enterResultMode();
                     reportAttempt('wrong', true, beforeGiveUp);
@@ -361,7 +404,7 @@
                     if (currentInput === "") return;
 
                     const result = evaluateAnswer(currentInput, currentQ.answer);
-                    fbEl.style.color = result.status === 'correct' ? '#10B981' : (result.status === 'error' || result.status === 'wrong' ? '#EF4444' : '#F59E0B');
+                    fbEl.style.color = result.status === 'correct' ? 'var(--ok)' : (result.status === 'error' || result.status === 'wrong' ? 'var(--danger)' : 'var(--warn)');
 
                     if (result.status === 'correct') {
                         fbEl.textContent = result.msg + " 完整过程在下面，对照检查一下，看完点「下一题」。";
@@ -395,12 +438,14 @@
             function showBootError(err) {
                 const msg = (err && err.message) ? err.message : String(err);
                 fbEl.textContent = '页面初始化失败：' + msg + '（按 F12 看控制台详情）';
-                fbEl.style.color = '#EF4444';
+                fbEl.style.color = 'var(--danger)';
                 const whoEl = document.getElementById('who');
                 if (whoEl) whoEl.textContent = '初始化失败';
             }
 
             try {
+                initThemeToggle();
+
                 if (typeof katex === 'undefined') {
                     console.warn('[poly-drill] KaTeX 未加载，已改用纯文本排版');
                 }
@@ -429,7 +474,7 @@
 
                 if (typeof math === 'undefined') {
                     fbEl.textContent = '题目库未加载，请刷新页面（Ctrl+F5）';
-                    fbEl.style.color = '#EF4444';
+                    fbEl.style.color = 'var(--danger)';
                 }
             } catch (err) {
                 console.error('[poly-drill] 初始化失败:', err);

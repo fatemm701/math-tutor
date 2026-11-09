@@ -5,6 +5,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>整式化简练习 · 老师看板</title>
+    <!-- 首帧前恢复夜间模式，避免先白后黑地闪一下 -->
+    <script>
+        try {
+            if (localStorage.getItem('poly-theme') === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        } catch (e) { }
+    </script>
     <!-- 本地 KaTeX：题目和答案按数学格式显示，断网也能用 -->
     <link rel="stylesheet" href="vendor/katex/katex.min.css">
     <script src="vendor/katex/katex.min.js"></script>
@@ -12,7 +20,47 @@
         :root {
             --primary: #4F46E5;
             --bg: #F9FAFB;
+            --surface: #fff;
             --line: #E5E7EB;
+            --text: #111827;
+            --text-muted: #4B5563;
+            --text-faint: #9CA3AF;
+            --text-head: #6B7280;
+            --row-hover: #F9FAFB;
+            --soft-btn-bg: #EEF2FF;
+            --denied-text: #6B7280;
+            --danger: #EF4444;
+            --ok: #047857;
+            --tag-correct-bg: #ECFDF5; --tag-correct-fg: #047857;
+            --tag-wrong-bg: #FEF2F2;   --tag-wrong-fg: #B91C1C;
+            --tag-hinted-bg: #FFFBEB;  --tag-hinted-fg: #B45309;
+            --tag-revealed-bg: #EEF2FF; --tag-revealed-fg: #4338CA;
+            --tag-fraction-bg: #F5F3FF; --tag-fraction-fg: #6D28D9;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
+        }
+
+        /* 夜间模式：深灰底，和练习页同一套色值 */
+        html[data-theme="dark"] {
+            --primary: #818CF8;
+            --bg: #1E1E2E;
+            --surface: #2A2A3C;
+            --line: #3F3F58;
+            --text: #E5E7EB;
+            --text-muted: #A6ABC0;
+            --text-faint: #8B90A3;
+            --text-head: #9AA0B5;
+            --row-hover: #30304A;
+            --soft-btn-bg: #383560;
+            --denied-text: #A6ABC0;
+            --danger: #F87171;
+            --ok: #34D399;
+            --tag-correct-bg: #123528; --tag-correct-fg: #5EEAD4;
+            --tag-wrong-bg: #3A1F22;   --tag-wrong-fg: #FCA5A5;
+            --tag-hinted-bg: #3A3218;  --tag-hinted-fg: #F5D48B;
+            --tag-revealed-bg: #3A3560; --tag-revealed-fg: #C4BCFF;
+            --tag-fraction-bg: #3A2E52; --tag-fraction-fg: #D8B4FE;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.45);
+            color-scheme: dark;
         }
 
         body {
@@ -23,7 +71,7 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            color: #111827;
+            color: var(--text);
         }
 
         .topbar {
@@ -35,7 +83,7 @@
             gap: 10px;
             margin-bottom: 14px;
             font-size: 0.85rem;
-            color: #4B5563;
+            color: var(--text-muted);
         }
 
         .topbar .who {
@@ -55,9 +103,9 @@
         .topbar a.btn {
             font-family: inherit;
             font-size: 0.8rem;
-            color: #4B5563;
-            background: #fff;
-            border: 1px solid #D1D5DB;
+            color: var(--text-muted);
+            background: var(--surface);
+            border: 1px solid var(--line);
             border-radius: 6px;
             padding: 4px 10px;
             cursor: pointer;
@@ -86,15 +134,15 @@
         }
 
         .card {
-            background: #fff;
+            background: var(--surface);
             border-radius: 12px;
             padding: 12px 14px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
+            box-shadow: var(--shadow);
         }
 
         .card .k {
             font-size: 0.75rem;
-            color: #6B7280;
+            color: var(--text-head);
         }
 
         .card .v {
@@ -104,10 +152,10 @@
         }
 
         .panel {
-            background: #fff;
+            background: var(--surface);
             border-radius: 12px;
             padding: 16px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
+            box-shadow: var(--shadow);
         }
 
         .section-head {
@@ -126,7 +174,7 @@
 
         .hint {
             font-size: 0.78rem;
-            color: #9CA3AF;
+            color: var(--text-faint);
         }
 
         /* 表格 */
@@ -150,7 +198,7 @@
         }
 
         thead th {
-            color: #6B7280;
+            color: var(--text-head);
             font-weight: normal;
             font-size: 0.75rem;
         }
@@ -160,7 +208,7 @@
         }
 
         tbody tr.clickable:hover {
-            background: #F9FAFB;
+            background: var(--row-hover);
         }
 
         td.num,
@@ -175,7 +223,7 @@
 
         .lv-head {
             font-size: 0.72rem;
-            color: #9CA3AF;
+            color: var(--text-faint);
             font-weight: normal;
         }
 
@@ -183,7 +231,7 @@
             font-family: inherit;
             font-size: 0.75rem;
             color: var(--primary);
-            background: #EEF2FF;
+            background: var(--soft-btn-bg);
             border: none;
             border-radius: 6px;
             padding: 3px 9px;
@@ -197,17 +245,17 @@
             font-size: 0.74rem;
         }
 
-        .tag-correct { background: #ECFDF5; color: #047857; }
-        .tag-wrong { background: #FEF2F2; color: #B91C1C; }
-        .tag-hinted { background: #FFFBEB; color: #B45309; }
-        .tag-revealed { background: #EEF2FF; color: #4338CA; }
-        .tag-fraction { background: #F5F3FF; color: #6D28D9; margin-left: 6px; }
+        .tag-correct { background: var(--tag-correct-bg); color: var(--tag-correct-fg); }
+        .tag-wrong { background: var(--tag-wrong-bg); color: var(--tag-wrong-fg); }
+        .tag-hinted { background: var(--tag-hinted-bg); color: var(--tag-hinted-fg); }
+        .tag-revealed { background: var(--tag-revealed-bg); color: var(--tag-revealed-fg); }
+        .tag-fraction { background: var(--tag-fraction-bg); color: var(--tag-fraction-fg); margin-left: 6px; }
 
         .empty {
             margin: 0;
             padding: 20px 0;
             text-align: center;
-            color: #9CA3AF;
+            color: var(--text-faint);
             font-size: 0.85rem;
         }
 
@@ -221,7 +269,7 @@
         .add-box h3 {
             font-size: 0.9rem;
             margin: 0 0 8px;
-            color: #374151;
+            color: var(--text-muted);
         }
 
         .add-form {
@@ -236,7 +284,9 @@
             padding: 8px 10px;
             font-size: 0.9rem;
             font-family: inherit;
-            border: 1px solid #D1D5DB;
+            color: var(--text);
+            background: var(--surface);
+            border: 1px solid var(--line);
             border-radius: 8px;
             outline: none;
             box-sizing: border-box;
@@ -269,11 +319,11 @@
             margin: 8px 0 0;
             min-height: 18px;
             font-size: 0.82rem;
-            color: #EF4444;
+            color: var(--danger);
         }
 
         .msg.ok {
-            color: #047857;
+            color: var(--ok);
         }
 
         /* 明细视图 */
@@ -292,7 +342,7 @@
 
         .self-stats {
             font-size: 0.85rem;
-            color: #374151;
+            color: var(--text-muted);
         }
 
         .link-btn {
@@ -308,11 +358,11 @@
 
         /* 学生误入：只有老师能看 */
         .denied {
-            background: #fff;
+            background: var(--surface);
             border-radius: 12px;
             padding: 28px 20px;
             text-align: center;
-            color: #4B5563;
+            color: var(--denied-text);
             font-size: 0.9rem;
             line-height: 1.9;
         }
@@ -330,6 +380,7 @@
         <span class="who" id="who">加载中…</span>
         <span class="actions">
             <a class="btn primary" href="practice.html">去练习</a>
+            <button type="button" id="theme-toggle" title="夜间模式" aria-pressed="false">🌙</button>
             <button type="button" id="refresh">刷新</button>
             <button type="button" id="logout">退出</button>
         </span>
@@ -714,7 +765,39 @@
             if (selfInfo) $('self-view').hidden = false;
         }
 
+        // ---------- 夜间模式（和练习页共用 poly-theme 这个开关） ----------
+        function readTheme() {
+            try {
+                return localStorage.getItem('poly-theme') === 'dark' ? 'dark' : 'light';
+            } catch (e) {
+                const attr = document.documentElement && document.documentElement.getAttribute
+                    ? document.documentElement.getAttribute('data-theme') : null;
+                return attr === 'dark' ? 'dark' : 'light';
+            }
+        }
+
+        function applyTheme(theme, btn) {
+            const dark = theme === 'dark';
+            if (document.documentElement) {
+                if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+                else document.documentElement.removeAttribute('data-theme');
+            }
+            if (btn) {
+                btn.textContent = dark ? '☀️' : '🌙';
+                btn.title = dark ? '白天模式' : '夜间模式';
+                btn.setAttribute('aria-pressed', dark ? 'true' : 'false');
+            }
+            try {
+                localStorage.setItem('poly-theme', dark ? 'dark' : 'light');
+            } catch (e) { /* 记不住就算了，本次会话内照样能切 */ }
+        }
+
         // ---------- 事件 ----------
+        $('theme-toggle').addEventListener('click', () => {
+            applyTheme(readTheme() === 'dark' ? 'light' : 'dark', $('theme-toggle'));
+        });
+        applyTheme(readTheme(), $('theme-toggle'));
+
         $('back').addEventListener('click', backToList);
 
         $('self-detail').addEventListener('click', () => {

@@ -6,7 +6,10 @@ const path = require('path');
 
 const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'frontend/teacher.html'), 'utf8');
-const inline = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)][0][1];
+// 看板页有两段内联脚本：<head> 里的夜间模式初始化 + 页面底部的主逻辑，这里取最长的那段
+const inline = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)]
+    .map(m => m[1])
+    .sort((a, b) => b.length - a.length)[0];
 
 // ---------- 最小 DOM 桩 ----------
 class El {
@@ -31,6 +34,9 @@ class El {
     set innerHTML(v) { this._html = v; this.children = []; }
     appendChild(c) { this.children.push(c); return c; }
     addEventListener(type, fn) { (this.handlers[type] = this.handlers[type] || []).push(fn); }
+    setAttribute(name, value) { (this.attrs = this.attrs || {})[name] = String(value); }
+    getAttribute(name) { return this.attrs ? (this.attrs[name] === undefined ? null : this.attrs[name]) : null; }
+    removeAttribute(name) { if (this.attrs) delete this.attrs[name]; }
 }
 
 const IDS = [
@@ -38,20 +44,34 @@ const IDS = [
     'self-view', 'self-stats', 'self-detail',
     'add-name', 'add-pass', 'add-btn', 'add-msg', 'add-form',
     'detail-view', 'detail-title', 'detail-body', 'detail-empty', 'detail-msg',
-    'back', 'refresh', 'logout'
+    'back', 'refresh', 'logout', 'theme-toggle'
 ];
 
 function makeDom() {
     const byId = {};
     IDS.forEach(id => { byId[id] = new El(id === 'add-form' ? 'form' : 'div', id); });
+    const documentElement = new El('html');
     return {
         byId,
+        documentElement,
         document: {
+            documentElement,
             getElementById: (id) => byId[id] || null,
             createElement: (tag) => new El(tag || 'div'),
             querySelector: () => null,
             querySelectorAll: () => []
         }
+    };
+}
+
+// 极简 localStorage 桩：节点自带的 localStorage 需要 --localstorage-file，太啰嗦
+function makeStore() {
+    const map = new Map();
+    return {
+        map,
+        getItem: (k) => (map.has(k) ? map.get(k) : null),
+        setItem: (k, v) => map.set(k, String(v)),
+        removeItem: (k) => map.delete(k)
     };
 }
 
@@ -149,6 +169,11 @@ async function boot(role, options) {
     const opts = options || {};
     const dom = makeDom();
     const apiCalls = [];
+    const store = makeStore();
+    if (opts.theme === 'dark') {
+        store.setItem('poly-theme', 'dark');
+        dom.documentElement.setAttribute('data-theme', 'dark');
+    }
     const location = { replaced: null, replace(to) { this.replaced = to; } };
     const katexStub = {
         render: (text, el) => {
@@ -157,11 +182,11 @@ async function boot(role, options) {
             el.textContent = text;
         }
     };
-    const page = new Function('document', 'location', 'fetch', 'katex', inline + '\n');
-    page(dom.document, location, makeFetch(role, apiCalls), katexStub);
+    const page = new Function('document', 'location', 'fetch', 'katex', 'localStorage', inline + '\n');
+    page(dom.document, location, makeFetch(role, apiCalls), katexStub, store);
     await settle();
     await settle();
-    return { dom, apiCalls, location };
+    return { dom, apiCalls, location, store };
 }
 
 const fails = [];
@@ -308,6 +333,29 @@ const text = (el) => (el ? String(el.textContent) : null);
 
     (t.dom.byId['back'].handlers.click || []).forEach(fn => fn({}));
     check(t.dom.byId['self-view'].hidden === false, '返回列表后「我自己」应重新出现');
+
+    // ---------- 10. 夜间模式 ----------
+    const themeBtn = t.dom.byId['theme-toggle'];
+    check(t.dom.documentElement.getAttribute('data-theme') === null, '默认应是白天模式');
+    check(text(themeBtn) === '🌙', '白天时按钮应显示 🌙，实际: ' + text(themeBtn));
+    const toggleTheme = () => (themeBtn.handlers.click || []).forEach(fn => fn({}));
+    toggleTheme();
+    check(t.dom.documentElement.getAttribute('data-theme') === 'dark', '点一次应切到夜间模式');
+    check(text(themeBtn) === '☀️', '夜间时按钮应显示 ☀️，实际: ' + text(themeBtn));
+    check(themeBtn.getAttribute('aria-pressed') === 'true', '夜间时 aria-pressed 应为 true');
+    check(t.store.getItem('poly-theme') === 'dark', '夜间模式应写进 localStorage，实际: ' + t.store.getItem('poly-theme'));
+    toggleTheme();
+    check(t.dom.documentElement.getAttribute('data-theme') === null, '再点一次应切回白天');
+    check(t.store.getItem('poly-theme') === 'light', '切回白天应记 light，实际: ' + t.store.getItem('poly-theme'));
+    // 上次选了夜间，重进看板应直接是夜间，按钮显示 ☀️
+    const darkBoard = await boot('teacher', { theme: 'dark' });
+    check(darkBoard.dom.documentElement.getAttribute('data-theme') === 'dark',
+        '上次选了夜间模式，重进看板应直接是夜间');
+    check(text(darkBoard.dom.byId['theme-toggle']) === '☀️', '恢复夜间后按钮应为 ☀️');
+    // 练习页和看板共用同一个开关：两边取的都是 poly-theme
+    check(html.indexOf("localStorage.getItem('poly-theme') === 'dark'") > 0 &&
+        html.indexOf("localStorage.setItem('poly-theme'") > 0,
+        '看板应和练习页共用 poly-theme 这个键');
 
     // ---------- 汇总 ----------
     console.log('=== 老师看板冒烟 ===');

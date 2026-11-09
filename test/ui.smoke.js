@@ -46,6 +46,9 @@ class El {
     appendChild(c) { this.children.push(c); return c; }
     addEventListener(type, fn) { (this.handlers[type] = this.handlers[type] || []).push(fn); }
     closest(sel) { return matches(this, sel) ? this : null; }
+    setAttribute(name, value) { (this.attrs = this.attrs || {})[name] = String(value); }
+    getAttribute(name) { return this.attrs ? (this.attrs[name] === undefined ? null : this.attrs[name]) : null; }
+    removeAttribute(name) { if (this.attrs) delete this.attrs[name]; }
 }
 
 function matches(el, sel) {
@@ -100,6 +103,7 @@ key('giveup', { action: 'giveup', classes: 'action' });
 key('submit', { action: 'submit', classes: 'submit' });
 
 const document = {
+    documentElement: new El('html'),
     getElementById: (id) => byId[id] || null,
     querySelector: (sel) => registry.find(e => matches(e, sel)) || null,
     querySelectorAll: (sel) => registry.filter(e => matches(e, sel)),
@@ -310,12 +314,18 @@ check(/[0-9xab(]/.test(shownQuestion), '退化内容应包含题目字符，实�
 const normalKatexRender = katex.render;
 const KEY = 'poly_current_q:u_test';
 
-async function bootFreshPage(cached) {
+async function bootFreshPage(cached, opts) {
     katex.render = (value, el) => { el._tex = value; el.textContent = value; };   // 恢复正常的桩
     registry.length = 0;
     Object.keys(byId).forEach(k => delete byId[k]);
     store.clear();
     if (cached) store.set(KEY, JSON.stringify(cached));
+    // 模拟 <head> 里那段主题初始化脚本：从 localStorage 恢复夜间模式
+    const docEl = new El('html');
+    const savedTheme = (opts && opts.theme) || null;
+    if (savedTheme) store.set('poly-theme', savedTheme);
+    if (savedTheme === 'dark') docEl.setAttribute('data-theme', 'dark');
+    document.documentElement = docEl;
 
     const tabs = [1, 2, 3, 4].map(lv => {
         const el = mk('', 'button', 'level-tab');
@@ -332,6 +342,7 @@ async function bootFreshPage(cached) {
     mk('who');
     mk('board-link');
     mk('logout');
+    const themeBtn = mk('theme-toggle', 'button');
 
     const keyboardEl = mk('keyboard');
     const freshKeys = {};
@@ -365,7 +376,7 @@ async function bootFreshPage(cached) {
     await fakeWindow.onload();
     await new Promise(r => setImmediate(r));
     const byClass = (sel) => (keyboardEl.children || []).filter(el => matches(el, sel));
-    return { tabs, question, tag, input, feedback, steps, keys: freshKeys, click, type, byClass };
+    return { tabs, question, tag, input, feedback, steps, keys: freshKeys, click, type, byClass, themeBtn, docEl };
 }
 
 const activeLevelOf = (tabs) => {
@@ -378,6 +389,25 @@ check(activeLevelOf(freshPage.tabs) === '1',
     '新学生（无缓存）应默认「① 入门」，实际 ' + activeLevelOf(freshPage.tabs));
 check(String(freshPage.question._tex || '').length > 0, '默认难度的题应渲染出来');
 check(freshPage.tag.hidden === true, '入门题不应显示「分数」标签');
+
+// 夜间模式：默认亮色，点按钮切深色并记住，再点切回；重新进页面能恢复
+check(freshPage.docEl.getAttribute('data-theme') === null,
+    '默认应为白天模式（<html> 上不该有 data-theme）');
+check(freshPage.themeBtn.textContent === '🌙', '白天时按钮应显示 🌙，实际: ' + freshPage.themeBtn.textContent);
+check(freshPage.themeBtn.getAttribute('aria-pressed') === 'false', '白天时 aria-pressed 应为 false');
+const toggleTheme = () => (freshPage.themeBtn.handlers.click || []).forEach(fn => fn({ target: freshPage.themeBtn }));
+toggleTheme();
+check(freshPage.docEl.getAttribute('data-theme') === 'dark', '点一次应切到夜间模式');
+check(freshPage.themeBtn.textContent === '☀️', '夜间时按钮应显示 ☀️，实际: ' + freshPage.themeBtn.textContent);
+check(freshPage.themeBtn.getAttribute('aria-pressed') === 'true', '夜间时 aria-pressed 应为 true');
+check(store.get('poly-theme') === 'dark', '夜间模式应写进 localStorage，实际: ' + store.get('poly-theme'));
+toggleTheme();
+check(freshPage.docEl.getAttribute('data-theme') === null, '再点一次应切回白天');
+check(store.get('poly-theme') === 'light', '切回白天应记 light，实际: ' + store.get('poly-theme'));
+const darkPage = await bootFreshPage(null, { theme: 'dark' });
+check(darkPage.docEl.getAttribute('data-theme') === 'dark',
+    '上次选了夜间模式，重进页面应直接是夜间');
+check(darkPage.themeBtn.textContent === '☀️', '恢复夜间模式后按钮应为 ☀️，实际: ' + darkPage.themeBtn.textContent);
 
 // 软键盘：只有 x、y 两个字母键，且都带 math 斜体样式；「清空」键能清掉输入
 const varKeys = freshPage.byClass('.key.var');

@@ -5,6 +5,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>整式化简练习</title>
+    <!-- 夜间模式：第一帧之前就把 data-theme 挂到 <html> 上，避免先闪一下白底 -->
+    <script>
+        try {
+            if (localStorage.getItem('poly-theme') === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        } catch (e) { /* 隐私模式下 localStorage 不可用，就用亮色 */ }
+    </script>
     <!-- 本地资源：不依赖外网 CDN，学生设备只要连得上服务器就能加载 -->
     <link rel="stylesheet" href="vendor/katex/katex.min.css">
     <link rel="stylesheet" href="css/practice.css">
@@ -21,6 +29,7 @@
         <span class="who" id="who">加载中…</span>
         <span class="actions">
             <a id="board-link" href="teacher.html" hidden>看板</a>
+            <button type="button" id="theme-toggle" title="夜间模式" aria-pressed="false">🌙</button>
             <button type="button" id="logout">退出</button>
         </span>
     </div>

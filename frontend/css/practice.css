@@ -1,15 +1,76 @@
 /* frontend/css/practice.css —— 练习页样式（从 practice.html 抽出）
-   这里只负责外观；页面结构在 practice.html，交互在 js/practice.js。 */
+   这里只负责外观；页面结构在 practice.html，交互在 js/practice.js。
+
+   颜色一律走变量：:root 是白天的值，html[data-theme="dark"] 覆盖成夜间模式。
+   新加样式请用变量，不要再写死 #fff / #333 这类色值，否则夜间模式会漏掉。 */
 :root {
     --primary: #4F46E5;
+    --primary-strong: #4338CA;
     --bg: #F9FAFB;
+    --surface: #FFFFFF;
     --key-bg: #FFFFFF;
     --key-active: #E5E7EB;
+    --key-action: #E5E7EB;
+    --text: #0F172A;
+    --text-muted: #4B5563;
+    --text-faint: #6B7280;
+    --placeholder: #9CA3AF;
+    --danger: #EF4444;
+    --warn: #F59E0B;
+    --ok: #10B981;
+    --line: #D1D5DB;
+    --panel-bg: #F8FAFC;
+    --panel-line: #E2E8F0;
+    --panel-title: #475569;
+    --step-title: #64748B;
+    --mine-line: #CBD5E1;
+    --mine-text: #B45309;
+    --hint-bg: #FFFBEB;
+    --hint-line: #FDE68A;
+    --hint-text: #92400E;
+    --tag-bg: #EEF2FF;
+    --tag-text: #4338CA;
+    --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    --shadow-key: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* 夜间模式：深灰底，比纯黑柔和，彩色标签也还能看清 */
+html[data-theme="dark"] {
+    --primary: #818CF8;
+    --primary-strong: #6366F1;
+    --bg: #1E1E2E;
+    --surface: #2A2A3C;
+    --key-bg: #30304A;
+    --key-active: #3F3F5E;
+    --key-action: #3A3A55;
+    --text: #E5E7EB;
+    --text-muted: #A6ABC0;
+    --text-faint: #8B90A3;
+    --placeholder: #7C8197;
+    --danger: #F87171;
+    --warn: #FBBF24;
+    --ok: #34D399;
+    --line: #3F3F58;
+    --panel-bg: #242438;
+    --panel-line: #3A3A52;
+    --panel-title: #B7BDD0;
+    --step-title: #9AA0B5;
+    --mine-line: #4A4A66;
+    --mine-text: #F0B860;
+    --hint-bg: #3A3218;
+    --hint-line: #5C4B1D;
+    --hint-text: #F5D48B;
+    --tag-bg: #3A3560;
+    --tag-text: #C4BCFF;
+    --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.45);
+    --shadow-key: 0 1px 2px rgba(0, 0, 0, 0.35);
+    color-scheme: dark;
 }
 
 body {
     font-family: system-ui, -apple-system, sans-serif;
     background-color: var(--bg);
+    color: var(--text);
     margin: 0;
     padding: 20px;
     display: flex;
@@ -25,7 +86,7 @@ body {
     gap: 15px;
 }
 
-/* 顶部：当前账号 + 退出 */
+/* 顶部：当前账号 + 夜间模式 + 退出 */
 .topbar {
     width: 100%;
     max-width: 500px;
@@ -35,7 +96,7 @@ body {
     gap: 10px;
     margin-bottom: 12px;
     font-size: 0.85rem;
-    color: #4B5563;
+    color: var(--text-muted);
 }
 
 .topbar .who {
@@ -60,12 +121,16 @@ body {
 .topbar button {
     font-family: inherit;
     font-size: 0.8rem;
-    color: #4B5563;
-    background: #fff;
-    border: 1px solid #D1D5DB;
+    color: var(--text-muted);
+    background: var(--surface);
+    border: 1px solid var(--line);
     border-radius: 6px;
     padding: 4px 10px;
     cursor: pointer;
+}
+
+.topbar button:active {
+    background: var(--key-active);
 }
 
 /* 难度选择卡片 */
@@ -80,9 +145,9 @@ body {
     font-family: inherit;
     font-size: 0.9rem;
     font-weight: bold;
-    color: #4B5563;
-    background: white;
-    border: 1px solid #D1D5DB;
+    color: var(--text-muted);
+    background: var(--surface);
+    border: 1px solid var(--line);
     border-radius: 8px;
     cursor: pointer;
     transition: 0.2s;
@@ -90,15 +155,15 @@ body {
 
 .level-tab.active {
     background: var(--primary);
-    color: white;
+    color: #fff;
     border-color: var(--primary);
 }
 
 .display-board {
-    background: white;
+    background: var(--surface);
     border-radius: 12px;
     padding: 20px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow);
     text-align: center;
     min-height: 120px;
     display: flex;
@@ -108,7 +173,7 @@ body {
 
 .question-label {
     font-size: 0.9rem;
-    color: #6B7280;
+    color: var(--text-faint);
     margin-bottom: 10px;
 }
 
@@ -132,12 +197,17 @@ body {
 }
 
 .tag-fraction {
-    background: #EEF2FF;
-    color: #4338CA;
+    background: var(--tag-bg);
+    color: var(--tag-text);
 }
 
 .katex-display {
     margin: 0 !important;
+}
+
+/* KaTeX 默认继承文字颜色；这里显式兜底，夜间模式里公式不会变黑 */
+html[data-theme="dark"] .katex {
+    color: var(--text);
 }
 
 .keyboard {
@@ -148,7 +218,8 @@ body {
 
 .key {
     background: var(--key-bg);
-    border: 1px solid #D1D5DB;
+    color: var(--text);
+    border: 1px solid var(--line);
     border-radius: 8px;
     padding: 15px 0;
     font-size: 1.25rem;
@@ -156,7 +227,7 @@ body {
     text-align: center;
     cursor: pointer;
     user-select: none;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    box-shadow: var(--shadow-key);
     transition: background 0.1s;
 }
 
@@ -173,19 +244,19 @@ body {
 }
 
 .key.action {
-    background: #E5E7EB;
+    background: var(--key-action);
     font-size: 0.9rem;
 }
 
 .key.submit {
     background: var(--primary);
-    color: white;
+    color: #fff;
     border: none;
     font-size: 0.9rem;
 }
 
 .key.submit:active {
-    background: #4338CA;
+    background: var(--primary-strong);
 }
 
 .feedback {
@@ -207,9 +278,9 @@ body {
 }
 
 .hint-panel {
-    background: #FFFBEB;
-    border: 1px solid #FDE68A;
-    color: #92400E;
+    background: var(--hint-bg);
+    border: 1px solid var(--hint-line);
+    color: var(--hint-text);
 }
 
 .hint-panel ul {
@@ -218,13 +289,13 @@ body {
 }
 
 .steps-panel {
-    background: #F8FAFC;
-    border: 1px solid #E2E8F0;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-line);
 }
 
 .panel-title {
     font-weight: bold;
-    color: #475569;
+    color: var(--panel-title);
     margin-bottom: 6px;
 }
 
@@ -237,24 +308,24 @@ body {
 
 .step-title {
     flex: 0 0 6.4em;
-    color: #64748B;
+    color: var(--step-title);
     font-size: 0.78rem;
 }
 
 .step-body {
     flex: 1;
     overflow-x: auto;
-    color: #0F172A;
+    color: var(--text);
 }
 
 /* 学生自己写的式子，放在过程最上面做对照 */
 .step-row.step-mine {
-    border-bottom: 1px dashed #CBD5E1;
+    border-bottom: 1px dashed var(--mine-line);
     margin-bottom: 6px;
     padding-bottom: 6px;
 }
 
 .step-row.step-mine .step-title,
 .step-row.step-mine .step-body {
-    color: #B45309;
+    color: var(--mine-text);
 }

@@ -28,7 +28,12 @@ const practiceSource = readText('frontend/js/practice.js');
 const browserApi = /\b(document|window|katex|localStorage|fetch|confirm|alert)\b/;
 ok(!browserApi.test(mathCoreSource), 'math-core.js 不应依赖浏览器 API');
 ok(!browserApi.test(simplifySource), 'engine-simplify.js 不应依赖浏览器 API');
-ok(!/<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/.test(practiceHtml), 'practice.html 不应再有内联脚本');
+// 页面里只允许一段内联脚本：<head> 里首帧前恢复夜间模式的那段（防止先白后黑闪一下）
+const practiceInlineScripts = [...practiceHtml.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+ok(practiceInlineScripts.length <= 1, 'practice.html 内联脚本只应有夜间模式初始化这一段，实际 ' + practiceInlineScripts.length + ' 段');
+practiceInlineScripts.forEach(code => {
+    ok(/poly-theme/.test(code) && /data-theme/.test(code), 'practice.html 的内联脚本只允许是夜间模式初始化');
+});
 ok(!/\bfunction\s+(expandExpr|polyMul|generateQuestion|evaluateAnswer|buildSteps|hintsFor)\b/.test(practiceSource), 'practice.js 不应再定义数学引擎函数');
 ok(typeof core.expandExpr === 'function' && typeof core.parseToPoly === 'function', 'math-core.js 应导出基础多项式函数');
 ok(typeof core.toLatexText === 'function', 'math-core.js 应导出 toLatexText');
