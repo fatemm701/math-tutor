@@ -165,6 +165,13 @@ body {
     transform: scale(0.98);
 }
 
+/* 变量键用数学斜体：正体的 × 是乘号、斜体的 x 是字母，学生一眼能分开，少点错 */
+.key.var {
+    font-family: "Cambria Math", "STIX Two Text", "Times New Roman", "Nimbus Roman", serif;
+    font-style: italic;
+    font-weight: 600;
+}
+
 .key.action {
     background: #E5E7EB;
     font-size: 0.9rem;

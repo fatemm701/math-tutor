@@ -119,13 +119,13 @@
             const c = rand(-4, 4);
             const type = rand(1, 3);
             if (type === 1) {
-                return joinSigned(fracBracket(q1, 'a + 2b'), '-', fracBracket(q2, plusConst('a - b', c)));
+                return joinSigned(fracBracket(q1, 'x + 2y'), '-', fracBracket(q2, plusConst('x - y', c)));
             }
             if (type === 2) {
-                return joinSigned(fracBracket(q1, plusConst('a^2 + b', c)), '-', fracBracket(q2, 'ab - a'));
+                return joinSigned(fracBracket(q1, plusConst('x^2 + y', c)), '-', fracBracket(q2, 'xy - x'));
             }
-            // 嵌套：q1(a + 2b - q2(a - b))
-            const inner = joinSigned('a + 2b', '-', fracBracket(q2, 'a - b'));
+            // 嵌套：q1(x + 2y - q2(x - y))
+            const inner = joinSigned('x + 2y', '-', fracBracket(q2, 'x - y'));
             return fracBracket(q1, inner);
         }
 
@@ -165,16 +165,17 @@
                 return joinSigned(mono, '-', `(${tail})`);
             }
             else {
+                // 挑战档用 x、y 两个字母：xy、x²、y² 各算一类，考「同类项」和「字母乘括号」
                 const k1 = randMul(-4, 4);
                 const k2 = randMul(-4, 4);
-                const mono = formatTerm(rand(-4, 4), rand(1, 2) === 1 ? 'a' : 'b');
-                const pool = ['const', 'a', 'b', 'ab', 'a^2', 'b^2'];
+                const mono = formatTerm(rand(-4, 4), rand(1, 2) === 1 ? 'x' : 'y');
+                const pool = ['const', 'x', 'y', 'xy', 'x^2', 'y^2'];
                 const P1 = genPoly(pool, rand(2, 3), -5, 5);
                 const P2 = genPoly(pool, 2, -5, 5);
                 const type = rand(1, 4);
-                if (type === 1) return joinSigned(joinSigned(mono, '-', `${k1}(${P1})`), '+', formatTerm(k2, 'b'));
+                if (type === 1) return joinSigned(joinSigned(mono, '-', `${k1}(${P1})`), '+', formatTerm(k2, 'y'));
                 if (type === 2) return joinSigned(`${k1}(${P1})`, '-', `${k2}(${P2})`);
-                if (type === 3) return joinSigned(`a(${genPoly(['a', 'b'], 2, -3, 3)})`, '-', `${k2}(${P2})`);
+                if (type === 3) return joinSigned(`y(${genPoly(['x', 'y'], 2, -3, 3)})`, '-', `${k2}(${P2})`);
                 return joinSigned(`-(${P1})`, '+', `${k2}(${P2})`);
             }
         }
@@ -555,7 +556,7 @@
             }
 
             const q = String(question).replace(/\s+/g, '');
-            if (/[ab]/.test(q)) hints.push('a 和 b 不是同类项；ab、a²、b² 也各算一类，别合并到一起。');
+            if (/[xy]/.test(q)) hints.push('x 和 y 不是同类项；xy、x²、y² 也各算一类，别合并到一起。');
             else if (/\^2/.test(q)) hints.push('x 和 x² 不是同类项，要分开合并。');
 
             hints.push('先去括号（乘进括号、注意变号），最后再合并同类项。');

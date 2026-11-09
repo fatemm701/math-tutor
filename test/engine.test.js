@@ -32,6 +32,16 @@ ok(!/<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/.test(practiceHtml), 'practi
 ok(!/\bfunction\s+(expandExpr|polyMul|generateQuestion|evaluateAnswer|buildSteps|hintsFor)\b/.test(practiceSource), 'practice.js 不应再定义数学引擎函数');
 ok(typeof core.expandExpr === 'function' && typeof core.parseToPoly === 'function', 'math-core.js 应导出基础多项式函数');
 ok(typeof core.toLatexText === 'function', 'math-core.js 应导出 toLatexText');
+ok(JSON.stringify(core.VAR_ORDER) === JSON.stringify(['x', 'y', 'a', 'b']),
+    '变量顺序应为 x、y、a、b（a、b 只用于兼容旧题），实际 ' + JSON.stringify(core.VAR_ORDER));
+// 旧题目（改版前生成的 a/b 题）仍要能解析、判等 —— 教师看板里存着这些记录
+const legacyPoly = core.parseToPoly('a(b + 2) - 3(a^2 - ab)');
+ok(core.formatPoly(legacyPoly) === '-3a^2 + 4ab + 2a',
+    '旧 a/b 题应仍可解析并按新排序输出，实际 ' + core.formatPoly(legacyPoly));
+// 指数用逐位相加：两位指数（x^6·x^6）应报错而不是串位算错
+let overflowErr = '';
+try { core.parseToPoly('x^6*x^6'); } catch (e) { overflowErr = e.message; }
+ok(/指数/.test(overflowErr), '指数越界应明确报错，实际: ' + overflowErr);
 ok(typeof E.generateQuestion === 'function' && typeof E.evaluateAnswer === 'function'
     && typeof E.buildSteps === 'function' && typeof E.hintsFor === 'function',
     'engine-simplify.js 应导出完整化简引擎 API');
@@ -62,6 +72,14 @@ for (let lv = 1; lv <= 4; lv++) {
         ok(ans === q.answer, '答案不一致: ' + q.question + ' | ' + q.answer + ' vs ' + ans);
         ok(ans !== '0', '答案不能是 0: ' + q.question);
         ok(!/[abx]\^([4-9])/.test(ans), '次数过高: ' + q.question);
+        if (lv === 4) {
+            // 挑战档统一用 x、y，不再出现 a、b
+            ok(!/[ab]/.test(q.question), 'L4 题面不应出现 a、b: ' + q.question);
+            ok(!/[ab]/.test(q.answer), 'L4 答案不应出现 a、b: ' + q.question + ' => ' + q.answer);
+        } else {
+            ok(!/y/.test(q.question), 'L' + lv + ' 不应出现 y: ' + q.question);
+        }
+        ok(/[xy]/.test(q.question), '题面应有 x 或 y: ' + q.question);
 
         const steps = E.buildSteps(q.question, q.answer);
         stats[lv].steps += steps.length;
@@ -128,13 +146,13 @@ ok(JSON.stringify(stepsOf('x(x + 1) - 2(x^2 - 3)')) === JSON.stringify([
     '合并同类项|-x^2+x+6'
 ]), '字母乘括号的解析步骤不符: ' + JSON.stringify(stepsOf('x(x + 1) - 2(x^2 - 3)')));
 
-// 双字母：ab 与 a^2 各算一类，不能合并到一起
-ok(JSON.stringify(stepsOf('a(b + 2) - 3(a^2 - ab)')) === JSON.stringify([
-    '原式|a(b+2)-3(a^2-ab)',
-    '乘进括号|(ab+2a)-(3a^2-3ab)',
-    '去括号|ab+2a-3a^2+3ab',
-    '合并同类项|4ab-3a^2+2a'
-]), '双字母题的解析步骤不符: ' + JSON.stringify(stepsOf('a(b + 2) - 3(a^2 - ab)')));
+// 双字母（挑战档）：xy 与 x^2 各算一类，不能合并到一起
+ok(JSON.stringify(stepsOf('y(x + 2) - 3(x^2 - xy)')) === JSON.stringify([
+    '原式|y(x+2)-3(x^2-xy)',
+    '乘进括号|(xy+2y)-(3x^2-3xy)',
+    '去括号|xy+2y-3x^2+3xy',
+    '合并同类项|-3x^2+4xy+2y'
+]), '双字母题的解析步骤不符: ' + JSON.stringify(stepsOf('y(x + 2) - 3(x^2 - xy)')));
 
 // 分数系数：乘进括号后系数保留分数，答案/步骤统一用斜杠线性写法
 ok(JSON.stringify(stepsOf('1/2(x + 4) - 3')) === JSON.stringify([
@@ -151,12 +169,12 @@ ok(JSON.stringify(stepsOf('(x + 4)/2 - (x - 1)/3')) === JSON.stringify([
     '合并同类项|x/6+7/3'
 ]), '分数题 (x + 4)/2 - (x - 1)/3 的解析步骤不符: ' + JSON.stringify(stepsOf('(x + 4)/2 - (x - 1)/3')));
 
-ok(JSON.stringify(stepsOf('1/2(a + 2b) - 1/3(a - b)')) === JSON.stringify([
-    '原式|1/2(a+2b)-1/3(a-b)',
-    '乘进括号|(a/2+b)-(a/3-b/3)',
-    '去括号|a/2+b-a/3+b/3',
-    '合并同类项|4b/3+a/6'
-]), '分数题 1/2(a + 2b) - 1/3(a - b) 的解析步骤不符: ' + JSON.stringify(stepsOf('1/2(a + 2b) - 1/3(a - b)')));
+ok(JSON.stringify(stepsOf('1/2(x + 2y) - 1/3(x - y)')) === JSON.stringify([
+    '原式|1/2(x+2y)-1/3(x-y)',
+    '乘进括号|(x/2+y)-(x/3-y/3)',
+    '去括号|x/2+y-x/3+y/3',
+    '合并同类项|x/6+4y/3'
+]), '分数题 1/2(x + 2y) - 1/3(x - y) 的解析步骤不符: ' + JSON.stringify(stepsOf('1/2(x + 2y) - 1/3(x - y)')));
 
 // ---------- 3. 判卷 ----------
 const judge = (student, question, expected) => {
@@ -184,7 +202,7 @@ ok(E.hintsFor('2(x - 3) - 4(x + 1)').some(h => /漏乘/.test(h)), 'L2 题应命�
 ok(E.hintsFor('-x - (4(x + 2) - 2)').some(h => /套着括号/.test(h)), '嵌套题应命中「嵌套」提示');
 ok(E.hintsFor('1/2(x + 4) - 3').some(h => /漏乘/.test(h)), '分数题应命中「漏乘」提示');
 ok(E.hintsFor('3 - 1/2(x + 4)').some(h => /变号/.test(h)), '分数题应命中「变号」提示');
-ok(E.hintsFor('a(b + 2) - 3(a^2 - ab)').some(h => /a 和 b/.test(h)), '双字母题应命中「a/b」提示');
+ok(E.hintsFor('y(x + 2) - 3(x^2 - xy)').some(h => /x 和 y/.test(h)), '双字母题应命中「x/y」提示');
 ok(E.hintsFor('x^2 + 2x - 1').some(h => /x²/.test(h)), '含平方的题应命中「x 和 x²」提示');
 
 // ---------- 汇总 ----------

@@ -47,7 +47,7 @@ ok(roundTrip('(x+1)/2 - (x-1)/3') === 'x/6 + 5/6', '分数括号展开应为 x/6
 ok(roundTrip('2/3x + 1/2x') === '7x/6', '2/3x + 1/2x 应为 7x/6');
 ok(roundTrip('-1/2x + 3/4') === '-x/2 + 3/4', '-1/2x + 3/4 应为 -x/2 + 3/4');
 ok(roundTrip('(x+1)/2') === 'x/2 + 1/2', '(x+1)/2 应展开成 x/2 + 1/2');
-ok(roundTrip('1/2ab + 2/3x^2') === 'ab/2 + 2x^2/3', '分数系数多字母项应格式化为 ab/2 + 2x^2/3');
+ok(roundTrip('1/2ab + 2/3x^2') === '2x^2/3 + ab/2', '分数系数多字母项应格式化为 2x^2/3 + ab/2');
 ok(roundTrip('2/4x + 3/4') === 'x/2 + 3/4', '未约分系数应先约分');
 ok(roundTrip('2(x - 3) - 4(x + 1)') === '-2x - 10', '整数题格式不应改变');
 ok(core.monomialBody(R.from(1, 2), 'x') === 'x/2', '单项式 1/2x 应写成 x/2');
@@ -100,7 +100,7 @@ checkSteps('(x+1)/2 - (x-1)/3', 'x/6 + 5/6');
 checkSteps('2/3x + 1/2x', '7x/6');
 checkSteps('1/2(x + 4) - 3', 'x/2 - 1');
 checkSteps('(x + 4)/2 - (x - 1)/3', 'x/6 + 7/3');
-checkSteps('1/2(a + 2b) - 1/3(a - b)', '4b/3 + a/6');
+checkSteps('1/2(x + 2y) - 1/3(x - y)', 'x/6 + 4y/3');
 checkSteps('1/2(x^2 + 4) - 2/3(x - 3)', 'x^2/2 - 2x/3 + 4');
 
 const fractionHints = E.hintsFor('1/2(x + 4) - 1/3(x - 3)');
@@ -146,6 +146,8 @@ for (let lv = 1; lv <= 4; lv++) {
         ok(Array.isArray(hints) && hints.length > 0, '分数题缺少提示: ' + q.question);
         ok(!/\d+\.\d+/.test(q.answer) && !/NaN|\[object Object\]/.test(q.answer),
             '分数题答案出现小数/坏值: ' + q.answer);
+        if (lv === 4) ok(!/[ab]/.test(q.question) && !/[ab]/.test(q.answer),
+            'L4 分数题不应出现 a、b: ' + q.question + ' => ' + q.answer);
     }
 }
 
@@ -164,15 +166,15 @@ ok(latex('(x + 4)/2 - (x - 1)/3') === '\\dfrac{x+4}{2}-\\dfrac{x-1}{3}',
 ok(latex('x/2-1') === '\\dfrac{x}{2}-1', 'x/2-1 的显示 LaTeX 不符: ' + latex('x/2-1'));
 ok(latex('-x/2+3/4') === '-\\dfrac{x}{2}+\\dfrac{3}{4}',
     '-x/2+3/4 的显示 LaTeX 不符: ' + latex('-x/2+3/4'));
-ok(latex('1/2(a + 2b) - 1/3(a - b)') === '\\dfrac{1}{2}\\left(a+2b\\right)-\\dfrac{1}{3}\\left(a-b\\right)',
-    '多字母分数式的显示 LaTeX 不符: ' + latex('1/2(a + 2b) - 1/3(a - b)'));
+ok(latex('1/2(x + 2y) - 1/3(x - y)') === '\\dfrac{1}{2}\\left(x+2y\\right)-\\dfrac{1}{3}\\left(x-y\\right)',
+    'x/y 双字母分数式的显示 LaTeX 不符: ' + latex('1/2(x + 2y) - 1/3(x - y)'));
 ok(latex('1/2ab + 2/3x^2') === '\\dfrac{1}{2}ab+\\dfrac{2}{3}x^{2}',
     '多字母分数项的显示 LaTeX 不符: ' + latex('1/2ab + 2/3x^2'));
 ok(latex('-1/2(x + 4) + 3/4(x - 2)') === '-\\dfrac{1}{2}\\left(x+4\\right)+\\dfrac{3}{4}\\left(x-2\\right)',
     '负分数乘括号的显示 LaTeX 不符: ' + latex('-1/2(x + 4) + 3/4(x - 2)'));
 ok(latex('1/') === null, '未完成输入 1/ 应回退为 null');
 ok(latex('') === null, '空输入应回退为 null');
-const latexAB = latex('a(b+2)-3(a^2-ab)');
+const latexAB = latex('y(x+2)-3(x^2-xy)');
 ok(typeof latexAB === 'string' && latexAB.indexOf('\\mathrm') === -1,
     '多字母不应被 mathjs 当成单位渲染: ' + latexAB);
 ok(latex('2(x - 3) - 4(x + 1)') === '2\\left(x-3\\right)-4\\left(x+1\\right)',

@@ -107,21 +107,55 @@
         }
 
         // 把表达式展开成「单项式 -> 系数」，用于精确判等和输出最简答案
-        // （mathjs 的 rationalize/simplify 处理 a、b 这种多字母多项式时会漏合并）
-        const VAR_ORDER = ['x', 'a', 'b'];
+        // （mathjs 的 rationalize/simplify 处理多字母多项式时会漏合并）
+        // 显示顺序就是这里的顺序：x、y 是现在出题用的字母；
+        // a、b 排在末尾只为兼容旧题目（教师看板里还存着改版前生成的 a/b 题），新题不再产出。
+        const VAR_ORDER = ['x', 'y', 'a', 'b'];
+        const N_VARS = VAR_ORDER.length;
+        // 单项式的键就是指数向量本身，连续写成 [x, y, a, b]：
+        // 恰好对应 "x^2y"、指数最大 6 这种写法，和 mathjs 的变量名互不影响。
+        // 键的每一“位”是单个数字，所以用模板字符串生成，不能补前导零
+        // （'0000' 在字符串模式会把非负指数的项反变成非负，越界也不会报错，静默算错）。
+        const CONST_KEY = Array(N_VARS).fill('0').join('');
+
+        // 只给某个字母一次方：x -> '1000'
+        function symbolKey(idx) {
+            return Array.from({ length: N_VARS },
+                (v, i) => (i === idx ? '1' : '0')).join('');
+        }
+
+        function keyToExps(key) {
+            return String(key).split('').map(Number);
+        }
+
+        function expsToKey(exps) {
+            return exps.join('');
+        }
+
+        // 单项式 × 单项式：指数逐位相加（x^2 · xy = x^3y）；指数越界按“不支持的指数”报错，
+        // 绝不带着越界的键继续算下去
+        function mulKeys(ka, kb) {
+            const ea = keyToExps(ka);
+            const eb = keyToExps(kb);
+            const sum = ea.map((v, i) => v + eb[i]);
+            if (sum.some(v => v < 0 || v > 9)) throw new Error('指数不合法');
+            return expsToKey(sum);
+        }
+
+        function keyDegree(key) {
+            return keyToExps(key).reduce((s, v) => s + v, 0);
+        }
 
         function expandExpr(node) {
             if (node.isParenthesisNode) return expandExpr(node.content);
             if (node.isConstantNode) {
                 const c = R.fromNumber(node.value);
-                return R.isZero(c) ? new Map() : new Map([['0,0,0', c]]);
+                return R.isZero(c) ? new Map() : new Map([[CONST_KEY, c]]);
             }
             if (node.isSymbolNode) {
                 const idx = VAR_ORDER.indexOf(node.name);
                 if (idx < 0) throw new Error('不支持的字母');
-                const exp = [0, 0, 0];
-                exp[idx] = 1;
-                return new Map([[exp.join(','), R.one]]);
+                return new Map([[symbolKey(idx), R.one]]);
             }
             if (node.isOperatorNode) {
                 if (node.op === 'unaryMinus' || (node.op === '-' && node.args.length === 1)) {
@@ -138,16 +172,16 @@
                     const numerator = expandExpr(node.args[0]);
                     const denominator = expandExpr(node.args[1]);
                     if (denominator.size === 0) throw new Error('分母不能为 0');
-                    if (denominator.size !== 1 || !denominator.has('0,0,0')) {
+                    if (denominator.size !== 1 || !denominator.has(CONST_KEY)) {
                         throw new Error('分母含字母暂不支持');
                     }
-                    return polyScale(numerator, R.div(R.one, denominator.get('0,0,0')));
+                    return polyScale(numerator, R.div(R.one, denominator.get(CONST_KEY)));
                 }
                 if (node.op === '^') {
                     const exp = node.args[1].isConstantNode ? Number(node.args[1].value) : NaN;
                     if (!Number.isInteger(exp) || exp < 0 || exp > 6) throw new Error('指数不合法');
                     const base = expandExpr(node.args[0]);
-                    let result = new Map([['0,0,0', R.one]]);
+                    let result = new Map([[CONST_KEY, R.one]]);
                     for (let i = 0; i < exp; i++) result = polyMul(result, base);
                     return result;
                 }
@@ -173,13 +207,12 @@
             return out;
         }
 
+        // 单项式 × 单项式：系数相乘，各变量指数相加
         function polyMul(a, b) {
             const out = new Map();
             a.forEach((ca, ka) => {
-                const ea = ka.split(',').map(Number);
                 b.forEach((cb, kb) => {
-                    const eb = kb.split(',').map(Number);
-                    const key = ea.map((v, i) => v + eb[i]).join(',');
+                    const key = mulKeys(ka, kb);
                     const v = R.add(out.get(key) || R.zero, R.mul(ca, cb));
                     R.isZero(v) ? out.delete(key) : out.set(key, v);
                 });
@@ -208,18 +241,20 @@
             return `${a.n}${varStr}`;
         }
 
-        // 输出隐含乘号/分数写法：8ab - 2a + 3，x/2 + 3/4
+        // 输出隐含乘号/分数写法：3xy - 2y + 3，x/2 + 3/4
+        // 排序：先按总次数降序，次数相同的按指数键降序 —— 键按 x、y、a、b 位序写成数字串，
+        // 比大小就是字典序，x^2 > xy > y^2 > x > y > 常数，和课本的书写习惯一致
         function formatPoly(poly) {
             const terms = [...poly.entries()].map(([key, coef]) => {
-                const exp = key.split(',').map(Number);
+                const exp = keyToExps(key);
                 let varStr = '';
                 exp.forEach((e, i) => {
                     if (e === 1) varStr += VAR_ORDER[i];
                     else if (e > 1) varStr += `${VAR_ORDER[i]}^${e}`;
                 });
-                return { coef, varStr, exp, degree: exp.reduce((s, v) => s + v, 0) };
+                return { coef, varStr, key, degree: keyDegree(key) };
             }).sort((p, q) => (q.degree - p.degree)
-                || (q.exp[2] - p.exp[2]) || (q.exp[1] - p.exp[1]) || (q.exp[0] - p.exp[0]));
+                || (p.key < q.key ? 1 : (p.key > q.key ? -1 : 0)));
 
             if (terms.length === 0) return '0';
             return terms.map((t, i) => {
@@ -237,7 +272,7 @@
         function maxExponent(poly) {
             let max = 0;
             poly.forEach((c, key) => {
-                key.split(',').forEach(e => { max = Math.max(max, Number(e)); });
+                keyToExps(key).forEach(e => { max = Math.max(max, e); });
             });
             return max;
         }

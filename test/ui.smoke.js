@@ -89,8 +89,11 @@ function key(name, opts) {
     keyboard.appendChild(el);
     keys[name] = el;
 }
-['7', '8', '9', '+', '4', '5', '6', '-', '1', '2', '3', '*', '/', '0', 'x', '(', ')', 'a', 'b', '^2', '^3']
+['7', '8', '9', '+', '4', '5', '6', '-', '1', '2', '3', '*', '/', '0', 'x', '(', ')', 'y', '^2', '^3']
     .forEach(v => key('k_' + v, { val: v }));
+key('x_var', { val: 'x', classes: 'var' });
+key('y_var', { val: 'y', classes: 'var' });
+key('clear', { action: 'clear', classes: 'action' });
 key('backspace', { action: 'backspace', classes: 'action' });
 key('hint', { action: 'hint', classes: 'action' });
 key('giveup', { action: 'giveup', classes: 'action' });
@@ -102,6 +105,26 @@ const document = {
     querySelectorAll: (sel) => registry.filter(e => matches(e, sel)),
     createElement: (tag) => new El(tag)
 };
+
+// 从 practice.html 解析出真实软键盘，测试夹具必须和页面一致（多了/少了一个键就失败）
+function keyboardFromHtml() {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'frontend', 'practice.html'), 'utf8');
+    const start = html.indexOf('id="keyboard"');
+    const stop = html.indexOf('data-action="submit"');
+    const block = html.slice(start, stop < 0 ? html.length : stop);
+    const re = /<div class="key([^"]*)"([^>]*)>([^<]*)<\/div>/g;
+    const list = [];
+    let m;
+    while ((m = re.exec(block))) {
+        const attrs = m[2];
+        const val = (attrs.match(/data-val="([^"]*)"/) || [])[1];
+        const action = (attrs.match(/data-action="([^"]*)"/) || [])[1];
+        list.push({ classes: m[1].trim(), val, action, text: m[3].trim() });
+    }
+    return list;
+}
+const htmlKeys = keyboardFromHtml();
+const practiceHtml = fs.readFileSync(path.join(__dirname, '..', 'frontend', 'practice.html'), 'utf8');
 
 const store = new Map();
 const localStorage = {
@@ -319,8 +342,11 @@ async function bootFreshPage(cached) {
         keyboardEl.appendChild(el);
         freshKeys[name] = el;
     }
-    ['7', '8', '9', '+', '4', '5', '6', '-', '1', '2', '3', '*', '/', '0', 'x', '(', ')', 'a', 'b', '^2', '^3']
+    ['7', '8', '9', '+', '4', '5', '6', '-', '1', '2', '3', '*', '/', '0', 'x', '(', ')', 'y', '^2', '^3']
         .forEach(v => addKey('k_' + v, { val: v }));
+    addKey('x_var', { val: 'x', classes: 'var' });
+    addKey('y_var', { val: 'y', classes: 'var' });
+    addKey('clear', { action: 'clear', classes: 'action' });
     addKey('backspace', { action: 'backspace', classes: 'action' });
     addKey('hint', { action: 'hint', classes: 'action' });
     addKey('giveup', { action: 'giveup', classes: 'action' });
@@ -338,7 +364,8 @@ async function bootFreshPage(cached) {
 
     await fakeWindow.onload();
     await new Promise(r => setImmediate(r));
-    return { tabs, question, tag, input, feedback, steps, keys: freshKeys, click, type };
+    const byClass = (sel) => (keyboardEl.children || []).filter(el => matches(el, sel));
+    return { tabs, question, tag, input, feedback, steps, keys: freshKeys, click, type, byClass };
 }
 
 const activeLevelOf = (tabs) => {
@@ -351,6 +378,22 @@ check(activeLevelOf(freshPage.tabs) === '1',
     '新学生（无缓存）应默认「① 入门」，实际 ' + activeLevelOf(freshPage.tabs));
 check(String(freshPage.question._tex || '').length > 0, '默认难度的题应渲染出来');
 check(freshPage.tag.hidden === true, '入门题不应显示「分数」标签');
+
+// 软键盘：只有 x、y 两个字母键，且都带 math 斜体样式；「清空」键能清掉输入
+const varKeys = freshPage.byClass('.key.var');
+check(varKeys.length === 2, '变量键应只有 x、y 两个，实际 ' + varKeys.length);
+check(varKeys.map(k => k.dataset.val).sort().join(',') === 'x,y',
+    '变量键应是 x、y，实际 ' + varKeys.map(k => k.dataset.val).join(','));
+check(freshPage.byClass('.key.action').filter(k => k.dataset.action === 'clear').length === 1,
+    '软键盘应有「清空」键');
+freshPage.type('2x');
+check(freshPage.input._tex === '2x', '输入 2x 后应渲染出来，实际: ' + freshPage.input._tex);
+freshPage.click('clear');
+check(freshPage.input.textContent === '请点击下方键盘输入',
+    '点「清空」后输入区应恢复占位提示，实际: ' + freshPage.input.textContent);
+freshPage.type('1');
+check(freshPage.input._tex === '1', '清空后仍应能继续输入，实际: ' + freshPage.input._tex);
+freshPage.click('clear');
 
 const oldPage = await bootFreshPage({
     level: 2, question: '2(x - 3) - 4(x + 1)', answer: '-2x-10',
@@ -401,6 +444,23 @@ check(fracPosts[0] && Array.isArray(fracPosts[0].tags) && fracPosts[0].tags.incl
     '分数题上报应带 fraction 标签');
 
 katex.render = normalKatexRender;
+
+// 页面上的软键盘必须和上面这套夹具一致：字母只剩 x、y，还会多一个「清空」键
+const htmlVals = htmlKeys.filter(k => k.val).map(k => k.val);
+check(htmlKeys.length > 0, '没能从 practice.html 解析出软键盘');
+[7, 8, 9, '+', 4, 5, 6, '-', 1, 2, 3, '*', '/', 0, 'x', '(', ')', 'y', '^2', '^3']
+    .forEach(v => check(htmlVals.includes(String(v)), '页面软键盘缺键: ' + v));
+['a', 'b'].forEach(v => check(!htmlVals.includes(v), '页面软键盘不应再有字母键: ' + v));
+check(htmlKeys.filter(k => k.action === 'clear').length === 1, '页面软键盘应有「清空」键');
+check(htmlKeys.filter(k => /\bvar\b/.test(k.classes)).map(k => k.val).sort().join(',') === 'x,y',
+    '页面上带数学斜体的键应正好是 x、y');
+check(htmlKeys.length === 24, '软键盘应为 24 个键（提交按钮单独统计），实际 ' + htmlKeys.length);
+check(htmlKeys.filter(k => k.action === 'backspace').length === 1 &&
+    htmlKeys.filter(k => k.action === 'hint').length === 1 &&
+    htmlKeys.filter(k => k.action === 'giveup').length === 1,
+    '页面软键盘应保留退格/提示/看解析三个动作键');
+check(practiceHtml.slice(practiceHtml.indexOf('data-action="submit"') - 40, practiceHtml.indexOf('data-action="submit"')).includes('class="key submit"'),
+    '页面应有「提交答案」键');
 
 // ---------- 汇总 ----------
 console.log('=== 交互冒烟 ===');

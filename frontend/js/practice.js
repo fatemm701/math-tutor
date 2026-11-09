@@ -333,6 +333,8 @@
 
                 if (val) {
                     currentInput += val;
+                } else if (action === "clear") {
+                    currentInput = "";
                 } else if (action === "backspace") {
                     if (currentInput.match(/\^[23]$/)) {
                         currentInput = currentInput.slice(0, -2);
