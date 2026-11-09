@@ -122,6 +122,10 @@ npm test
 
 见 [DEPLOY.md](DEPLOY.md)：镜像与 compose、更新与回滚、备份、反向代理与 HTTPS、常见故障排查。
 
+当前发布方式是「开发机打 tar → `scp` → 服务器解包 → `docker compose up -d --build`」。
+仓库已备好服务器直连 `git pull` 的配置说明（DEPLOY.md §2.2），加上一把只读 Deploy key 即可切换。
+`tools/` 是开发机专用的本地脚本（临时隧道等），已写进 `.gitignore` 与 `.dockerignore`，不进仓库、也不上传服务器。
+
 ## 主要接口
 
 ```

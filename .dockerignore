@@ -5,6 +5,7 @@ data
 .vscode
 test
 struct
+tools
 core_test.js
 question_gen.js
 npm-debug.log*

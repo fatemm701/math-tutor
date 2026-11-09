@@ -72,9 +72,12 @@ curl -s localhost:3001/api/health # {"success":true,"data":{"ok":true,"users":0,
 
 ## 二、更新代码
 
+### 2.1 当前方式：开发机打 tar → 上传 → 服务器解包
+
 ```bash
-# 开发机：重新打包上传
-tar --exclude=node_modules --exclude=data --exclude=.git --exclude='*.tar.gz' -czf poly-drill.tar.gz .
+# 开发机（仓库根目录）：打包，排除依赖/数据/本地工具/已有压缩包
+tar --exclude=node_modules --exclude=data --exclude=.git --exclude=tools \
+    --exclude='*.tar.gz' --exclude='.vscode' -czf poly-drill.tar.gz .
 scp poly-drill.tar.gz ubuntu@<服务器IP>:/tmp/
 
 # 服务器：覆盖代码并重建（./data 是挂载卷，数据不受影响）
@@ -84,7 +87,52 @@ docker compose up -d --build
 docker compose ps
 ```
 
-只改了 `.env` 时不需要 `--build`，`docker compose up -d` 即可让新环境变量生效。
+- `tools/` 是**开发机专用**（本地临时隧道脚本），已同时写进 `.gitignore` 和 `.dockerignore`：
+  不进仓库，也不进镜像和部署目录。
+- 只改了 `.env` 时不需要 `--build`，`docker compose up -d` 即可让新环境变量生效。
+
+### 2.2 以后：服务器直接 `git pull`（待开通）
+
+服务器 SSH 进 `github.com:443`、`ssh.github.com:443`、`github.com:22` 都已实测可达
+（2026-11-09 验证，DEPLOY.md 旧版本记的"TCP 不通"已过时）。只差一把 GitHub 认可的只读密钥。
+
+开通步骤（一次性，约 1 分钟）：
+
+```bash
+# 1) 服务器上生成仓库专用只读密钥（私钥只留在服务器）
+ssh-keygen -t ed25519 -C "poly-drill-deploy@server" -f ~/.ssh/poly-drill_deploy -N ""
+cat ~/.ssh/poly-drill_deploy.pub
+
+# 2) 浏览器：github.com/fatemm701/math_train → Settings → Deploy keys → Add deploy key
+#    粘贴上一步的公钥。Allow write access 不必勾（只读就够 pull）
+
+# 3) 服务器上写 ~/.ssh/config（走 443，与开发机一致）
+cat >> ~/.ssh/config <<'EOF'
+Host github.com
+  HostName ssh.github.com
+  Port 443
+  User git
+  IdentityFile ~/.ssh/poly-drill_deploy
+  IdentitiesOnly yes
+EOF
+chmod 600 ~/.ssh/config
+
+# 4) 验证
+ssh -T git@github.com                              # Hi fatemm701/math_train! You've successfully authenticated...
+git ls-remote git@github.com:fatemm701/math_train.git | head   # 能列出分支即通过
+```
+
+开通后，更新流程简化为：
+
+```bash
+cd /opt/poly-drill
+git pull --ff-only
+docker compose up -d --build
+docker compose ps
+```
+
+**不设自动拉取**（没有 cron、没有 webhook）：代码只有在人执行 `git pull` 之后才上线。
+想撤销授权时，在 GitHub 的 Deploy keys 里删掉那把 key 即可，服务器上的脚本不受影响。
 
 ## 三、回滚
 
@@ -135,6 +183,9 @@ docker compose up -d
 | `bind: address already in use` | 宿主端口被占 | 改 `.env` 的 `HOST_PORT` |
 | 页面能开但学生看不到最新代码 | 浏览器缓存 | `Ctrl + F5` 强刷（`vendor/` 是真长缓存，文件名变了才会重下） |
 | 记录偶尔丢失 | 起了多个实例同时写 db.json | 只保留一个容器：`docker ps -a | grep poly-drill` |
+| 开通 git 后 `Permission denied (publickey)` | 公钥没加到 Deploy keys / 加错了仓库 / `IdentityFile` 路径不对 | `ssh -vT git@github.com` 看实际用的是哪把 key；确认仓库是 `fatemm701/math_train`，且 `~/.ssh/config` 指向正确私钥 |
+| 开通 git 后 `fatal: not a git repository` | 目录还是 tar 部署留下的普通目录 | 不要 `git pull`，改用上面的 tar 方式；要转成仓库需 `git init` + `fetch` + `checkout -f`，先备份 `data/` |
+| 开通 git 后 `git pull` 报本地有改动会覆盖 | 以前 `tar` 覆盖过被跟踪文件（git 把它们当成"本地修改"） | `git checkout -- .` 丢弃过期修改后再 `git pull --ff-only`；`data/` 与 `.env` 不在仓库里，不会被动 |
 
 ## 六、加 HTTPS（可选）
 
@@ -188,14 +239,11 @@ TRUST_PROXY=1       # 信任 NPM 的 X-Forwarded-For，登录失败限速按真�
 | 协议 | SSH，且**必须走 443**：本机 22 端口被网络屏蔽，`~/.ssh/config` 里已配 `Host github.com → HostName ssh.github.com / Port 443` |
 | 日常提交 | `git push`（首次 `git push -u origin main` 已建好 upstream） |
 
-服务器侧目前**不用** `git pull`：从这台机器直连 `github.com:443` 超时（DNS 正常，TCP 不通），
-所以发布仍是「本机打包 → `scp` → 服务器解包 → `docker compose up -d --build`」。
+服务器侧目前**不用** `git pull`，发布仍是「本机打包 → `scp` → 服务器解包 → `docker compose up -d --build`」。
 
-若以后想在服务器上直接拉取，需要先满足两点，否则改了也没用：
+连通性已在 2026-11-09 实测：服务器到 `github.com:443`、`ssh.github.com:443`、`github.com:22` 的 TCP 握手全部成功，
+`curl https://github.com/fatemm701/math_train.git/info/refs?service=git-upload-pack` 返回 `401`（私有仓库、网络正常）。
+所以**不再需要代理**；唯一缺的是 GitHub 认可的密钥，按 §2.2 加一把只读 Deploy key 即可切换到 `git pull`。
 
-1. 让服务器能连上 GitHub（例如配 `https_proxy`，或给 `git` 设代理）；
-2. 在仓库 Settings → Deploy keys 里加服务器自己的公钥（只读、不加写权限即可），
-   然后 `git clone` 一次，之后用 `git pull && docker compose up -d --build` 更新。
-
-无论哪种方式，**`data/` 与 `.env` 都不进仓库**，更新代码不会动线上数据。
+无论哪种方式，**`data/`、`.env`、`tools/` 都不进仓库也不上传**，更新代码不会动线上数据。
 

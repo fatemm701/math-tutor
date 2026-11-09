@@ -2,3 +2,11 @@ node_modules/
 data/
 .env
 *.tar.gz
+
+# 本机专用工具（隧道脚本等），只在开发机上用，不进仓库也不上传服务器
+tools/
+
+# 系统 / 编辑器垃圾文件
+*.log
+Thumbs.db
+.DS_Store
