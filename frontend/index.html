@@ -14,7 +14,7 @@
             }
         } catch (e) { /* 隐私模式下 localStorage 不可用，就用亮色 */ }
     </script>
-    <link rel="stylesheet" href="css/app-nav.css?v=ce354981">
+    <link rel="stylesheet" href="css/app-nav.css?v=20261114">
     <style>
         :root {
             --primary: #4F46E5;
@@ -212,6 +212,10 @@
                         <span class="app-nav-icon" aria-hidden="true">=</span>
                         <span class="app-nav-text">一元一次方程</span>
                     </a>
+                    <a class="app-nav-link" href="math.html" data-nav="arithmetic">
+                        <span class="app-nav-icon" aria-hidden="true">±</span>
+                        <span class="app-nav-text">口算训练</span>
+                    </a>
                 </div>
             </div>
             <a class="app-nav-link" id="nav-board" href="teacher.html" data-nav="board" hidden>
@@ -275,7 +279,7 @@
             </div>
         </div>
     </main>
-    <script src="js/app-nav.js?v=ce354981"></script>
+    <script src="js/app-nav.js?v=20261114"></script>
     <script>
         const $ = (id) => document.getElementById(id);
         let mode = 'login';

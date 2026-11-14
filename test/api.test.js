@@ -267,8 +267,121 @@ function listen(port) {
         '方程桶应 3 条独立做对，平均用时 (6000+9000+7000)/3，实际 ' + JSON.stringify(r.body.data.stats.byTopic.equation));
     ok(r.body.data.stats.byTopic.simplify.total + r.body.data.stats.byTopic.equation.total === r.body.data.stats.total,
         'byTopic 两桶之和应等于总题数');
-    // 从这里起 r 重新指向学生自查响应，下面 11a4 拿它当「自己看」的基准
+
+    // ===== 口算训练（topic='arithmetic'）=====
+    // 到这一步学生共 13 条：化简 10（7 条旧记录 + e3 + e4 + e5）、方程 3（e1 / e2 / e6）。
+    // 下面 3 条口算题：整数口算（无标签）/ 分数口算（fraction 标签）/ 小数口算（decimal 标签），
+    // 其中第一条再报一次，验证去重（同一 clientId 只记一次）没被新题型影响。
+    r = await student('POST', '/api/attempts', {
+        clientId: 'a1', level: 1, topic: 'arithmetic', question: '-17 + 42 - 35',
+        answer: '-10', studentAnswer: '-10', result: 'correct', usedHint: false, revealed: false,
+        gaveUp: false, tags: [], ms: 4000
+    });
+    ok(r.status === 200 && r.body.data.id, '口算整数题应上报成功: ' + JSON.stringify(r.body));
+    r = await student('POST', '/api/attempts', {
+        clientId: 'e7', level: 2, topic: 'arithmetic', question: '3/4 + 1/2 - 1/8',
+        answer: '9/8', studentAnswer: '9/8', result: 'correct', usedHint: false, revealed: false,
+        gaveUp: false, tags: ['fraction'], ms: 8000
+    });
+    ok(r.status === 200, '口算分数题应上报成功: ' + JSON.stringify(r.body));
+    r = await student('POST', '/api/attempts', {
+        clientId: 'e8', level: 2, topic: 'arithmetic', question: '1.5 * 4 - 2.5',
+        answer: '3.5', studentAnswer: '3.5', result: 'correct', usedHint: false, revealed: false,
+        gaveUp: false, tags: ['decimal'], ms: 6000
+    });
+    ok(r.status === 200, '带 decimal 标签的口算题应上报成功（标签白名单已放行）: ' + JSON.stringify(r.body));
+    // e7 再报一次：口算题同样按 clientId 去重
+    r = await student('POST', '/api/attempts', {
+        clientId: 'e7', level: 2, topic: 'arithmetic', question: '3/4 + 1/2 - 1/8',
+        answer: '9/8', studentAnswer: '9/8', result: 'correct', tags: ['fraction'], ms: 8000
+    });
+    ok(r.status === 200 && r.body.data.duplicate === true, '口算题重复上报也应去重: ' + JSON.stringify(r.body));
+
+    // 明细里 topic / tags 原样落库：arithmetic 不再被丢弃成 null，decimal 能透传
+    r = await student('GET', '/api/attempts/mine?limit=200');
+    ok(r.status === 200 && r.body.data.attempts.length === 16, '加上 3 条口算后应有 16 条记录，实际 ' + (r.body.data.attempts || []).length);
+    const mineArith = {};
+    (r.body.data.attempts || []).forEach(x => { mineArith[x.clientId] = x; });
+    ok(mineArith.a1 && mineArith.a1.topic === 'arithmetic', '口算题明细应带 topic=arithmetic，实际 ' + JSON.stringify(mineArith.a1 && mineArith.a1.topic));
+    ok(mineArith.a1 && Array.isArray(mineArith.a1.tags) && mineArith.a1.tags.length === 0, '口算整数题应存空 tags');
+    ok(mineArith.e7 && mineArith.e7.tags.length === 1 && mineArith.e7.tags[0] === 'fraction', '口算分数题的 fraction 标签应照旧保留');
+    ok(mineArith.e8 && mineArith.e8.tags.length === 1 && mineArith.e8.tags[0] === 'decimal', 'decimal 标签应透传，实际 ' + JSON.stringify(mineArith.e8 && mineArith.e8.tags));
+
+    // 学生自查：byTopic 多出第三张表，结构与其他两桶完全一致，三桶之和等于总表
+    r = await student('GET', '/api/attempts/mine/summary');
+    ok(r.status === 200, '学生看自己的汇总应 200，实际 ' + r.status);
+    const arithMine = r.body.data.stats;
+    const arithCounts = r.body.data.counts;
     const mineSummary2 = r.body.data;
+    ok(arithMine.byTopic && arithMine.byTopic.arithmetic, '汇总应返回 byTopic.arithmetic');
+    ok(Object.keys(arithMine.byTopic).sort().join(',') === 'arithmetic,equation,simplify',
+        'byTopic 应正好是 simplify / equation / arithmetic 三张表，实际 ' + JSON.stringify(Object.keys(arithMine.byTopic)));
+    ok(arithMine.byTopic.arithmetic.total === 3, '口算桶应有 3 条，实际 ' + arithMine.byTopic.arithmetic.total);
+    ok(arithMine.byTopic.arithmetic.correctCount === 3 && arithMine.byTopic.arithmetic.accuracy === 100,
+        '口算桶应 3 条全对、正确率 100，实际 ' + JSON.stringify(arithMine.byTopic.arithmetic));
+    ok(arithMine.byTopic.arithmetic.avgMs === Math.round((4000 + 8000 + 6000) / 3),
+        '口算桶平均用时应为 (4000+8000+6000)/3，实际 ' + arithMine.byTopic.arithmetic.avgMs);
+    ok(typeof arithMine.byTopic.arithmetic.lastAt === 'number' && arithMine.byTopic.arithmetic.lastAt > 0,
+        '口算桶应带上最近做题时间');
+    // 三张表的结构（字段集合）必须一模一样：拿化简表当模板逐个比对
+    const topicShape = Object.keys(arithMine.byTopic.simplify).sort();
+    ok(['equation', 'arithmetic'].every(t =>
+        Object.keys(arithMine.byTopic[t]).sort().join(',') === topicShape.join(',')),
+        '三张 byTopic 表的字段应完全一致，实际 ' + JSON.stringify(arithMine.byTopic));
+    ok(arithMine.byTopic.simplify.total + arithMine.byTopic.equation.total + arithMine.byTopic.arithmetic.total === arithMine.total,
+        'byTopic 三桶之和应等于总题数，实际 ' + JSON.stringify({
+            s: arithMine.byTopic.simplify.total, e: arithMine.byTopic.equation.total,
+            a: arithMine.byTopic.arithmetic.total, total: arithMine.total
+        }));
+    ok(arithMine.total === 16 && arithMine.byTopic.simplify.total === 10 && arithMine.byTopic.equation.total === 3,
+        '口算题不该挤占化简 / 方程的题数，实际 ' + JSON.stringify({
+            total: arithMine.total, s: arithMine.byTopic.simplify.total, e: arithMine.byTopic.equation.total
+        }));
+    // 总表的分数题口径不变：只看标签，所以口算分数题 e7 也计入（c1 + c2 + e2 + e5 + e6 + e7）
+    ok(arithMine.fraction.total === 6, '分数题总表应含口算分数题（6 条），实际 ' + arithMine.fraction.total);
+
+    // counts 叶节点：新增 arithmetic / arithmeticFraction，口算题不进化简/方程的任何字段
+    const cellL1a = arithCounts.all.correct[1];
+    ok(typeof cellL1a.arithmetic === 'number' && typeof cellL1a.arithmeticFraction === 'number',
+        '计数叶节点应固定带 arithmetic / arithmeticFraction 字段，实际 ' + JSON.stringify(cellL1a));
+    ok(cellL1a.arithmetic === 1 && cellL1a.arithmeticFraction === 0,
+        'all/correct/L1 应有 1 条口算整数题（a1），实际 ' + JSON.stringify(cellL1a));
+    // L2：化简 e4（整数）+ e5（分数）、方程 e1（整数）+ e6（分数）、口算 e7（分数）+ e8（小数）
+    // 这一格是「独立做对」，正好 7 条（c1 那条化简分数题用的是提示，落在 hintedCorrect 桶里）
+    const cellL2a = arithCounts.all.correct[2];
+    ok(cellL2a.fraction === 2 && cellL2a.integer === 1 && cellL2a.equation === 2 && cellL2a.equationFraction === 1,
+        '口算题不该动化简 / 方程的计数，实际 ' + JSON.stringify(cellL2a));
+    ok(cellL2a.arithmetic === 2 && cellL2a.arithmeticFraction === 1,
+        'all/correct/L2 应有 2 条口算题、其中 1 条带分数标签，实际 ' + JSON.stringify(cellL2a));
+    ok(cellL2a.arithmeticFraction <= cellL2a.arithmetic, 'arithmeticFraction 应是 arithmetic 的子集');
+    ok(arithCounts.today.correct[2].arithmetic === 2 && arithCounts.all.correct[3].arithmetic === 0,
+        '今天的计数应包含刚上报的口算题，实际 ' + JSON.stringify(arithCounts.today.correct[2]));
+    // 恒等式 ①：全部 = fraction + integer + equation + arithmetic
+    ok(cellL2a.fraction + cellL2a.integer + cellL2a.equation + cellL2a.arithmetic === 7,
+        'L2「全部」应等于 fraction+integer+equation+arithmetic（7 条），实际 ' + JSON.stringify(cellL2a));
+    // 恒等式 ②：分数题 = fraction + equationFraction + arithmeticFraction
+    ok(cellL2a.fraction + cellL2a.equationFraction + cellL2a.arithmeticFraction === 4,
+        'L2「分数题」应等于 fraction+equationFraction+arithmeticFraction，实际 ' + JSON.stringify(cellL2a));
+    // 恒等式要在「每一个叶节点」上成立，且叶节点上的总和要接得上总表
+    const identityBroken = [];
+    let cellSum = 0;
+    ['all', 'week', 'today'].forEach(range => {
+        Object.keys(arithCounts[range]).forEach(bucket => {
+            Object.keys(arithCounts[range][bucket]).forEach(level => {
+                const c = arithCounts[range][bucket][level];
+                const shape = ['fraction', 'integer', 'equation', 'equationFraction', 'arithmetic', 'arithmeticFraction'];
+                if (shape.some(k => typeof c[k] !== 'number')) identityBroken.push(range + '/' + bucket + '/' + level + ' 缺少计数字段');
+                if (Object.keys(c).length !== shape.length) identityBroken.push(range + '/' + bucket + '/' + level + ' 计数字段数量不对');
+                if (c.arithmeticFraction > c.arithmetic) identityBroken.push(range + '/' + bucket + '/' + level + ' arithmeticFraction > arithmetic');
+                if (range === 'all') cellSum += c.fraction + c.integer + c.equation + c.arithmetic;
+            });
+        });
+    });
+    ok(identityBroken.length === 0, '每个叶节点都应恰好有 6 个计数字段且 arithmeticFraction ⊆ arithmetic，实际 ' + JSON.stringify(identityBroken));
+    ok(cellSum === arithMine.total, 'all 范围各叶节点加总应等于总题数 ' + arithMine.total + '，实际 ' + cellSum);
+    // 学生自查接口同样带算术桶（不是只有老师看板有）
+    ok(arithCounts.all.correct[1].fraction === 0 && arithCounts.all.correct[1].integer === 1,
+        'all/correct/L1/integer 应仍是 e3 那一条化简题，实际 ' + JSON.stringify(arithCounts.all.correct[1]));
 
     // 11a4. 老师看板与学生自查的 byTopic / counts 口径一致（11b 起沿用下面这份 r）
     r = await teacher('GET', '/api/teacher/students');
@@ -282,6 +395,11 @@ function listen(port) {
     ok(JSON.stringify(mineSummary2.counts) === JSON.stringify(listStudent.counts), '两个接口的 counts 应完全一致');
     ok(listStudent.stats.byTopic.equation.total === 3 && listStudent.stats.byTopic.simplify.total === 10,
         '老师看板的 byTopic 也应是 化简 10 / 方程 3');
+    ok(listStudent.stats.byTopic.arithmetic && listStudent.stats.byTopic.arithmetic.total === 3,
+        '老师看板的 byTopic 也应带口算桶（3 条），实际 ' + JSON.stringify(listStudent.stats.byTopic.arithmetic));
+    const sameArith = topicKeys.every(k =>
+        JSON.stringify(mineSummary2.stats.byTopic.arithmetic[k]) === JSON.stringify(listStudent.stats.byTopic.arithmetic[k]));
+    ok(sameArith, '两个接口的口算桶口径应一致');
 
     // 11b. 筛选用的稀疏计数
     const counts = r.body.data.students[0].counts;
@@ -295,12 +413,18 @@ function listen(port) {
     ok(counts.all.revealed[3].integer === 1, 'all/revealed/L3/integer 应为 1，实际 ' + JSON.stringify(counts.all.revealed[3]));
     ok(counts.today.correct[2].fraction === 2 && counts.today.correct[2].equation === 2,
         '今天的计数应包含刚上报的记录，实际 ' + JSON.stringify(counts.today.correct[2]));
+    ok(counts.all.correct[1].integer === 1 && counts.all.correct[1].arithmetic === 1 && counts.all.correct[1].arithmeticFraction === 0,
+        '「全部」按看板口径 = fraction+integer+equation+arithmetic，实际 ' + JSON.stringify(counts.all.correct[1]));
+    ok(counts.all.correct[3].equation === 1 && counts.all.correct[3].equationFraction === 1,
+        'all/correct/L3 方程分数题计数不变，实际 ' + JSON.stringify(counts.all.correct[3]));
     ok(typeof r.body.data.now === 'number', '应返回服务端当前时间戳，供前端算时间范围');
 
     // 12. 老师看明细（学生常见：7 条旧记录 + e1/e2/e6 方程题 + e3/e4/e5 化简题）
     const studentId = r.body.data.students[0].user.id;
     r = await teacher('GET', '/api/teacher/attempts?studentId=' + studentId + '&limit=20');
-    ok(r.status === 200 && r.body.data.attempts.length === 13, '明细应为 13 条，实际 ' + (r.body.data.attempts || []).length);
+    ok(r.status === 200 && r.body.data.attempts.length === 16, '明细应为 16 条（13 + 3 条口算），实际 ' + (r.body.data.attempts || []).length);
+    ok(r.body.data.attempts.find(x => x.clientId === 'a1').topic === 'arithmetic', '明细里口算题应带 topic=arithmetic');
+    ok(r.body.data.attempts.find(x => x.clientId === 'e8').tags.includes('decimal'), '明细里口算小数题应带 decimal 标签');
     ok(r.body.data.attempts.find(x => x.clientId === 'e1').topic === 'equation', '明细里方程题应带 topic');
     ok(r.body.data.attempts.find(x => x.clientId === 'e2').tags.includes('fraction'), '方程题的分数标签应照旧保留');
     ok(r.body.data.attempts.find(x => x.clientId === 'c1').topic === null, '旧记录的 topic 应为 null');
@@ -348,7 +472,10 @@ function listen(port) {
     ok(!raw.includes('hong123'), 'db.json 里不应出现明文密码');
     const db = JSON.parse(raw);
     ok(db.users.length === 3, 'db.json 应有 3 个用户，实际 ' + db.users.length);
-    ok(db.attempts.length === 14, 'db.json 应有 14 条记录（学生 13 + 老师自练 1），实际 ' + db.attempts.length);
+    ok(db.attempts.length === 17, 'db.json 应有 17 条记录（学生 16 + 老师自练 1），实际 ' + db.attempts.length);
+    ok(db.attempts.find(a => a.clientId === 'a1').topic === 'arithmetic', '口算题的 topic 应落盘为 arithmetic');
+    ok(db.attempts.find(a => a.clientId === 'e7').tags.includes('fraction') && db.attempts.find(a => a.clientId === 'e8').tags.includes('decimal'),
+        '口算题的 fraction / decimal 标签都应落盘');
     ok(db.attempts.find(a => a.clientId === 'e1').topic === 'equation', '方程题的 topic 应落盘');
     ok(db.attempts.find(a => a.clientId === 'e2').topic === 'equation' && db.attempts.find(a => a.clientId === 'e2').tags.includes('fraction'),
         '方程题的 tags 白名单不受影响');
@@ -369,9 +496,12 @@ function listen(port) {
     r = await teacher('GET', '/api/auth/me');
     ok(r.status === 200 && r.body.data.user.name === '张老师', '重启后会话应仍然有效，实际 ' + r.status);
     r = await teacher('GET', '/api/teacher/students');
-    ok(r.body.data.students[0].stats.total === 13, '重启后记录应还在，实际 ' + r.body.data.students[0].stats.total);
+    ok(r.body.data.students[0].stats.total === 16, '重启后记录应还在，实际 ' + r.body.data.students[0].stats.total);
     ok(r.body.data.students[0].stats.byTopic.equation.total === 3, '重启后 byTopic 应从零重算（不读缓存），方程桶仍为 3 条');
     ok(r.body.data.students[0].stats.byTopic.simplify.total === 10, '重启后化简桶仍为 10 条');
+    ok(r.body.data.students[0].stats.byTopic.arithmetic.total === 3, '重启后口算桶仍为 3 条');
+    ok(r.body.data.students[0].counts.all.correct[2].arithmetic === 2 && r.body.data.students[0].counts.all.correct[2].arithmeticFraction === 1,
+        '重启后 counts 里的口算计数也应重算出来，实际 ' + JSON.stringify(r.body.data.students[0].counts.all.correct[2]));
 
     // 17. 退出登录后会话失效
     r = await teacher('POST', '/api/auth/logout');

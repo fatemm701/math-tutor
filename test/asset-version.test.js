@@ -1,12 +1,12 @@
 // test/asset-version.test.js —— 页面资源版本号自检
-// 作用：四个页面引用的 css/*.css 与 js/*.js 必须带 ?v=<提交号>，
+// 作用：五个页面引用的 css/*.css 与 js/*.js 必须带 ?v=<提交号>，
 // 否则发版后浏览器会继续用缓存里的旧样式（side bar 高度/配色改完不生效就是这原因）。
 // 用法：node test/asset-version.test.js
 const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
-const pages = ['index.html', 'practice.html', 'equations.html', 'teacher.html'];
+const pages = ['index.html', 'practice.html', 'equations.html', 'math.html', 'teacher.html'];
 const RE = /(?:href|src)="((?:css\/[\w.-]+\.css|js\/[\w.-]+\.js))(?:\?v=([\w.-]+))?"/g;
 
 let pass = 0;
@@ -35,7 +35,7 @@ pages.forEach((name) => {
     const html = fs.readFileSync(path.join(root, 'frontend', name), 'utf8');
     for (const m of html.matchAll(RE)) if (m[2]) versions.add(m[2]);
 });
-check(versions.size === 1, '四个页面的资源版本号应一致，实际: ' + [...versions].join(', '));
+check(versions.size === 1, '所有页面的资源版本号应一致，实际: ' + [...versions].join(', '));
 
 // 版本号必须等于当前 HEAD（读完 .git，不调 git 子进程，沙箱里也能跑）
 function readHead() {

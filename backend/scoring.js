@@ -11,14 +11,21 @@ const CORRECT_BUCKETS = ['correct', 'hintedCorrect'];
 // 旧记录的 partial 分不出是哪一种，历史数据只能统一按 unmerged 计。
 const PARTIAL_RESULTS = ['parentheses', 'unmerged', 'partial'];
 // 题型：旧记录没有 topic 字段，一律按化简算，保证历史数据口径不变
-const TOPICS = ['simplify', 'equation'];
+// 顺序即看板上的展示顺序：整式化简 / 一元一次方程 / 口算训练
+const TOPICS = ['simplify', 'equation', 'arithmetic'];
 
 function isFraction(attempt) {
     return Array.isArray(attempt.tags) && attempt.tags.includes('fraction');
 }
 
+// 口算题（含分数口算、小数口算）：有自己的一类计数，不混进化简/方程的分数题口径
+function isArithmetic(attempt) {
+    return attempt.topic === 'arithmetic';
+}
+
+// 未知 / 缺省 topic 一律回落化简（旧客户端兼容）；只认白名单里的题型，别的一律当化简
 function topicOf(attempt) {
-    return attempt.topic === 'equation' ? 'equation' : 'simplify';
+    return TOPICS.includes(attempt.topic) ? attempt.topic : 'simplify';
 }
 
 // 旧记录没有 gaveUp 字段：只能靠「看到了完整解析且没做对」近似判定是主动看的
@@ -60,7 +67,7 @@ function summarize(list) {
     const stats = emptyBucketStats();
     stats.lastAt = null;
     stats.fraction = emptyBucketStats();
-    // 题型分表：化简 / 方程各一份，计分方式与总表完全一致
+    // 题型分表：化简 / 方程 / 口算各一份，计分方式与总表完全一致
     stats.byTopic = {};
     TOPICS.forEach(topic => {
         stats.byTopic[topic] = emptyBucketStats();
@@ -70,7 +77,7 @@ function summarize(list) {
 
     let totalMs = 0;
     let fractionMs = 0;
-    const topicMs = { simplify: 0, equation: 0 };
+    const topicMs = { simplify: 0, equation: 0, arithmetic: 0 };
     const levelMs = { 1: 0, 2: 0, 3: 0, 4: 0 };
 
     list.forEach(a => {
@@ -120,10 +127,17 @@ function summarize(list) {
 
 // ---------- 筛选用的稀疏计数 ----------
 // 看板要在「结果 × 难度 × 题型 × 时间范围」上组合筛选，又不想每次都拉全量明细，
-// 所以这里按桶预先数好：counts[范围][结果][难度][fraction|integer|equation|equationFraction] = 条数。
-// 化简题照旧只落在 fraction / integer（按有没有「分数」标签拆）；方程题只落在 equation，
-// 其中带「分数」标签的再额外落一份 equationFraction —— 它是 equation 的子集，不是另算一类。
-// 于是「全部」= fraction + integer + equation，「分数题」= fraction + equationFraction。
+// 所以这里按桶预先数好：
+//   counts[范围][结果][难度][fraction|integer|equation|equationFraction|arithmetic|arithmeticFraction] = 条数。
+// 化简题照旧只落在 fraction / integer（按有没有「分数」标签拆）；
+// 方程题只落在 equation，其中带「分数」标签的再额外落一份 equationFraction；
+// 口算题只落在 arithmetic，其中带「分数」标签的再额外落一份 arithmeticFraction。
+// equationFraction / arithmeticFraction 都是各自父字段的子集，不是另算一类，
+// 带「小数（decimal）」标签的口算题只做标签透传，不单开计数叶子。
+// 于是每个叶节点上恒成立：
+//   「全部」  = fraction + integer + equation + arithmetic      （四个字段互不重叠）
+//   「分数题」= fraction + equationFraction + arithmeticFraction  （只挑了各自带分数标签的那部分）
+//   「方程题」= equation，「口算题」= arithmetic，「化简题」= fraction + integer
 // 时间范围在服务端算好，避免浏览器时区和服务端对不齐。
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -147,7 +161,14 @@ function emptyCounts() {
         BUCKETS.forEach(bucket => {
             counts[range][bucket] = {};
             [1, 2, 3, 4].forEach(level => {
-                counts[range][bucket][level] = { fraction: 0, integer: 0, equation: 0, equationFraction: 0 };
+                counts[range][bucket][level] = {
+                    fraction: 0,
+                    integer: 0,
+                    equation: 0,
+                    equationFraction: 0,
+                    arithmetic: 0,
+                    arithmeticFraction: 0
+                };
             });
         });
     });
@@ -160,14 +181,21 @@ function buildCounts(list, now) {
     list.forEach(a => {
         if (![1, 2, 3, 4].includes(a.level)) return;
         const bucket = classify(a);
-        const kind = isFraction(a) ? 'fraction' : 'integer';
+        const hasFraction = isFraction(a);
+        const kind = hasFraction ? 'fraction' : 'integer';
         const isEquation = topicOf(a) === 'equation';
+        const isArith = isArithmetic(a);
         rangeKeys(a.createdAt || 0, todayStart, now).forEach(range => {
             const cell = stats[range][bucket][a.level];
-            // 方程题不计入化简题的 fraction / integer，旧记录（无 topic）照旧走下面这一行
-            if (isEquation) {
+            // 三类题型互斥：先判口算，再判方程，剩下的（含旧记录、非法 topic）都算化简题
+            if (isArith) {
+                // 口算题只落 arithmetic，带分数标签再落一份子集 arithmeticFraction
+                cell.arithmetic++;
+                if (hasFraction) cell.arithmeticFraction++;
+            } else if (isEquation) {
+                // 方程题不计入化简题的 fraction / integer；旧记录（无 topic）已由 topicOf 回落成 simplify
                 cell.equation++;
-                if (kind === 'fraction') cell.equationFraction++;
+                if (hasFraction) cell.equationFraction++;
             } else {
                 cell[kind]++;
             }
@@ -183,6 +211,7 @@ module.exports = {
     TOPICS,
     DAY_MS,
     isFraction,
+    isArithmetic,
     topicOf,
     gaveUpOf,
     classify,

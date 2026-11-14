@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>口算训练</title>
+    <!-- 夜间模式：第一帧之前就把 data-theme 挂到 <html> 上，避免先闪一下白底 -->
+    <script>
+        try {
+            if (localStorage.getItem('poly-theme') === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        } catch (e) { /* 隐私模式下 localStorage 不可用，就用亮色 */ }
+    </script>
+    <!-- 本地资源：不依赖外网 CDN，学生设备只要连得上服务器就能加载 -->
+    <link rel="stylesheet" href="vendor/katex/katex.min.css">
+    <link rel="stylesheet" href="css/practice.css?v=20261114">
+    <link rel="stylesheet" href="css/app-nav.css?v=20261114">
+    <!-- 本页专用样式，必须放在 practice.css 之后：软键盘的跨列布局只在这里调，不动 practice.css -->
+    <link rel="stylesheet" href="css/math-drill.css?v=20261114">
+    <script src="vendor/katex/katex.min.js"></script>
+    <script src="vendor/math.js"></script>
+
+    <!-- 口算引擎与整式/方程引擎同构：IIFE，不碰 DOM，浏览器端挂到 window.ArithEngine -->
+    <script src="js/arith-engine.js?v=20261114"></script>
+</head>
+
+<body class="nav-layout" data-auth="app">
+
+    <!-- 左侧导航：四个页面共用同一段结构，样式在 css/app-nav.css，交互在 js/app-nav.js -->
+    <div class="app-nav-slot">
+    <aside class="app-nav" id="app-nav" aria-label="主导航">
+        <div class="app-nav-head">
+            <button type="button" class="app-nav-toggle" id="nav-toggle" aria-label="收起菜单"
+                aria-expanded="true">☰</button>
+            <a class="app-nav-brand" href="index.html">数学练习</a>
+        </div>
+        <nav class="app-nav-links">
+            <p class="app-nav-caption">学习</p>
+            <div class="app-nav-group" data-open="true">
+                <button type="button" class="app-nav-group-btn" id="nav-group-practice" aria-expanded="true">
+                    <span class="app-nav-icon" aria-hidden="true">▤</span>
+                    <span class="app-nav-text">练习</span>
+                    <span class="app-nav-caret" aria-hidden="true">▾</span>
+                </button>
+                <div class="app-nav-sub" id="nav-sub-practice">
+                    <a class="app-nav-link" href="practice.html" data-nav="simplify">
+                        <span class="app-nav-icon" aria-hidden="true">∑</span>
+                        <span class="app-nav-text">整式化简</span>
+                    </a>
+                    <a class="app-nav-link" href="equations.html" data-nav="equation">
+                        <span class="app-nav-icon" aria-hidden="true">=</span>
+                        <span class="app-nav-text">一元一次方程</span>
+                    </a>
+                    <a class="app-nav-link" href="math.html" data-nav="arithmetic" aria-current="page">
+                        <span class="app-nav-icon" aria-hidden="true">±</span>
+                        <span class="app-nav-text">口算训练</span>
+                    </a>
+                </div>
+            </div>
+            <a class="app-nav-link" id="nav-board" href="teacher.html" data-nav="board" hidden>
+                <span class="app-nav-icon" aria-hidden="true">▦</span>
+                <span class="app-nav-text">看板</span>
+            </a>
+        </nav>
+        <div class="app-nav-foot">
+            <span class="app-nav-who" id="who">加载中…</span>
+            <div class="app-nav-actions">
+                <button type="button" id="theme-toggle" title="夜间模式" aria-pressed="false">🌙</button>
+                <button type="button" id="logout">退出</button>
+                <a class="btn primary" id="nav-login" href="index.html" hidden>登录</a>
+            </div>
+        </div>
+    </aside>
+    <div class="app-nav-backdrop" id="app-nav-backdrop" aria-hidden="true"></div>
+    </div>
+
+    <main class="app-main">
+        <div class="container">
+            <!-- 难度选择 -->
+            <div class="level-tabs" id="level-tabs">
+                <button class="level-tab" data-level="1">① 入门</button>
+                <button class="level-tab" data-level="2">② 基础</button>
+                <button class="level-tab" data-level="3">③ 进阶</button>
+                <button class="level-tab" data-level="4">④ 挑战</button>
+            </div>
+            <!-- 本档练什么：随难度切换改写（math-drill-page.js），帮学生一眼知道这一档多了什么 -->
+            <p class="level-desc" id="level-desc">百以内正负数加减</p>
+
+            <div class="display-board">
+                <div class="question-label" id="level-label">口算训练
+                    <span id="q-tag" class="tag tag-fraction" hidden>分数</span>
+                    <span id="q-tag-decimal" class="tag tag-decimal" hidden>小数</span>
+                </div>
+                <!-- 口算要的是「一个数」：题面下面留一行填空提示，分数写 3/4、小数写 0.75 都算对 -->
+                <div id="question-display"></div>
+                <div class="question-label" style="margin-top: 15px;">你的答案</div>
+                <div id="input-display" style="color: var(--primary); min-height: 35px;"></div>
+                <div id="answer-note" class="answer-note">分数写 3/4，小数写 0.75 也行；负数直接写 -5</div>
+                <div id="feedback-display" class="feedback"></div>
+                <div id="hint-display" class="hint-panel" hidden></div>
+                <div id="steps-display" class="steps-panel" hidden></div>
+            </div>
+
+            <div class="keyboard" id="keyboard">
+                <!-- 第一排 -->
+                <div class="key" data-val="7">7</div>
+                <div class="key" data-val="8">8</div>
+                <div class="key" data-val="9">9</div>
+                <div class="key" data-val="+">+</div>
+                <div class="key" data-val="-">-</div>
+
+                <!-- 第二排 -->
+                <div class="key" data-val="4">4</div>
+                <div class="key" data-val="5">5</div>
+                <div class="key" data-val="6">6</div>
+                <div class="key" data-val="*">×</div>
+                <div class="key" data-val="/">/</div>
+
+                <!-- 第三排 -->
+                <div class="key" data-val="1">1</div>
+                <div class="key" data-val="2">2</div>
+                <div class="key" data-val="3">3</div>
+                <div class="key" data-val=".">.</div>
+                <div class="key" data-val="(">(</div>
+
+                <!-- 第四排：0、右括号、清空、提示、看解析 -->
+                <div class="key" data-val="0">0</div>
+                <div class="key" data-val=")">)</div>
+                <div class="key action" data-action="clear">清空</div>
+                <div class="key action" data-action="hint">提示</div>
+                <div class="key action" data-action="giveup" style="color: #EF4444;">看解析</div>
+
+                <!-- 第五排：退格（1 列）+ 提交答案（4 列） -->
+                <div class="key action" data-action="backspace">退格</div>
+                <div class="key submit" data-action="submit">提交答案</div>
+            </div>
+        </div>
+    </main>
+    <script src="js/app-nav.js?v=20261114"></script>
+    <script src="js/math-drill-page.js?v=20261114"></script>
+</body>
+
+</html>

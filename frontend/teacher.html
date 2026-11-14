@@ -16,7 +16,7 @@
     <!-- 本地 KaTeX：题目和答案按数学格式显示，断网也能用 -->
     <link rel="stylesheet" href="vendor/katex/katex.min.css">
     <script src="vendor/katex/katex.min.js"></script>
-    <link rel="stylesheet" href="css/app-nav.css?v=ce354981">
+    <link rel="stylesheet" href="css/app-nav.css?v=20261114">
     <style>
         :root {
             --primary: #4F46E5;
@@ -408,6 +408,10 @@
                         <span class="app-nav-icon" aria-hidden="true">=</span>
                         <span class="app-nav-text">一元一次方程</span>
                     </a>
+                    <a class="app-nav-link" href="math.html" data-nav="arithmetic">
+                        <span class="app-nav-icon" aria-hidden="true">±</span>
+                        <span class="app-nav-text">口算训练</span>
+                    </a>
                 </div>
             </div>
             <a class="app-nav-link" id="nav-board" href="teacher.html" data-nav="board" aria-current="page" hidden>
@@ -482,6 +486,7 @@
                             <th class="num lv-head">④ 挑战</th>
                             <th class="num">分数题</th>
                             <th class="num">方程</th>
+                            <th class="num">口算</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -532,7 +537,7 @@
         </div>
     </main>
 
-    <script src="js/app-nav.js?v=ce354981"></script>
+    <script src="js/app-nav.js?v=20261114"></script>
     <script>
         const $ = (id) => document.getElementById(id);
         const LEVEL_LABEL = { 1: '① 入门', 2: '② 基础', 3: '③ 进阶', 4: '④ 挑战' };
@@ -631,6 +636,11 @@
             return attempt.topic === 'equation';
         }
 
+        // 口算题（math.html）自成一类，不落化简 / 方程的计数里
+        function isArithmetic(attempt) {
+            return attempt.topic === 'arithmetic';
+        }
+
         // 旧记录没有 gaveUp：只能靠「看到了完整解析且没做对」近似判定
         function gaveUpOf(attempt) {
             if (typeof attempt.gaveUp === 'boolean') return attempt.gaveUp;
@@ -679,13 +689,14 @@
             { key: '3', text: '③ 进阶' },
             { key: '4', text: '④ 挑战' }
         ];
-        // fraction / integer 按「分数系数」分；equation / simplify 按题型分（两者互相正交）
+        // fraction / integer 按「分数系数」分；equation / simplify / arithmetic 按题型分
         const KIND_OPTIONS = [
             { key: '', text: '全部' },
             { key: 'fraction', text: '分数题' },
             { key: 'integer', text: '整数题' },
             { key: 'equation', text: '方程题' },
-            { key: 'simplify', text: '化简题' }
+            { key: 'simplify', text: '化简题' },
+            { key: 'arithmetic', text: '口算题' }
         ];
         const RANGE_OPTIONS = [
             { key: '', text: '全部' },
@@ -699,11 +710,13 @@
         }
 
         // 列表页：用后端预先数好的稀疏计数求和，不拉明细
-        // 计数叶子节点：{ fraction, integer, equation, equationFraction }
+        // 计数叶子节点：{ fraction, integer, equation, equationFraction, arithmetic, arithmeticFraction }
         //   fraction / integer   —— 化简题（按有没有分数系数分）
         //   equation             —— 方程题（不分分数）
         //   equationFraction     —— 带分数系数的方程题（已包含在 equation 里，只在合并时要扣掉）
-        // 老响应没有后两个字段，一律按 0 处理
+        //   arithmetic           —— 口算题（不落 fraction / integer / equation 任何一个）
+        //   arithmeticFraction   —— 带分数的口算题（已包含在 arithmetic 里，同理只在合并时扣掉）
+        // 老响应没有后四个字段，一律按 0 处理
         function countsOfFilter(filter, allCounts) {
             const totals = { total: 0 };
             BUCKETS.forEach(b => { totals[b] = 0; });
@@ -721,10 +734,11 @@
                     const cell = byLevel[String(level)] || byLevel[level];
                     if (!cell) return;
                     let n = 0;
-                    // fraction / integer / equation 三个字段互不重叠；equationFraction 是 equation 的子集
-                    if (!kind) n = (cell.fraction || 0) + (cell.integer || 0) + (cell.equation || 0);
-                    else if (kind === 'fraction') n = (cell.fraction || 0) + (cell.equationFraction || 0);
-                    else if (kind === 'simplify') n = (cell.fraction || 0) + (cell.integer || 0);   // 化简题 = 总数 - 方程题
+                    // fraction / integer / equation / arithmetic 四个字段互不重叠；
+                    // equationFraction / arithmeticFraction 各自是 equation / arithmetic 的子集
+                    if (!kind) n = (cell.fraction || 0) + (cell.integer || 0) + (cell.equation || 0) + (cell.arithmetic || 0);
+                    else if (kind === 'fraction') n = (cell.fraction || 0) + (cell.equationFraction || 0) + (cell.arithmeticFraction || 0);
+                    else if (kind === 'simplify') n = (cell.fraction || 0) + (cell.integer || 0);   // 化简题 = 总数 - 方程题 - 口算题
                     else n = cell[kind] || 0;
                     totals[b] += n;
                     totals.total += n;
@@ -739,11 +753,12 @@
                 if (filter.result && classify(a) !== filter.result) return false;
                 const levelStr = a.level === null || a.level === undefined ? '' : String(a.level);
                 if (filter.level && levelStr !== String(filter.level)) return false;
-                // 分数题 / 整数题只看「有没有分数系数」，方程题 / 化简题只看题型
+                // 分数题 / 整数题只看「有没有分数系数」，方程题 / 化简题 / 口算题只看题型
                 if (filter.kind === 'fraction' && !isFraction(a)) return false;
                 if (filter.kind === 'integer' && isFraction(a)) return false;
                 if (filter.kind === 'equation' && !isEquation(a)) return false;
-                if (filter.kind === 'simplify' && isEquation(a)) return false;
+                if (filter.kind === 'simplify' && (isEquation(a) || isArithmetic(a))) return false;
+                if (filter.kind === 'arithmetic' && !isArithmetic(a)) return false;
                 if (filter.range && filter.range !== 'all') {
                     const span = filter.range === 'today' ? 0 : 7 * 24 * 60 * 60 * 1000;
                     const floor = filter.range === 'today' ? startOfToday() : (Date.now() - span);
@@ -835,6 +850,7 @@
                 { k: '看解析', v: (totals.revealed || 0) + ' 题' },
                 { k: '分数题（对/总）', v: fracText({ total: totals.totalFraction, correct: totals.correctFraction }) },
                 { k: '方程题（对/总）', v: fracText({ total: totals.totalEquation, correct: totals.correctEquation }) },
+                { k: '口算题（对/总）', v: fracText({ total: totals.totalArithmetic, correct: totals.correctArithmetic }) },
                 { k: '平均用时', v: avgText }
             ];
             // 学生看自己时没有「几个学生」这回事，第二张卡空着不如不显示
@@ -876,11 +892,19 @@
             totals.correctFraction = 0;
             totals.totalEquation = 0;
             totals.correctEquation = 0;
+            totals.totalArithmetic = 0;
+            totals.correctArithmetic = 0;
             totals.all = students.reduce((n, item) => n + (item.stats.total || 0), 0);
             students.forEach(item => {
                 const c = countsOfFilter(listFilter, item.counts);
                 BUCKETS.forEach(b => { totals[b] += c[b]; });
                 totals.total += c.total;
+                if (!listFilter.kind || listFilter.kind === 'all' || listFilter.kind === 'arithmetic') {
+                    // 口算题卡片：老响应没有 arithmetic 字段，countsOfFilter 会按 0 返回
+                    const arith = countsOfFilter(Object.assign({}, listFilter, { kind: 'arithmetic' }), item.counts);
+                    totals.totalArithmetic += arith.total;
+                    totals.correctArithmetic += CORRECT_KEYS.reduce((n, k) => n + arith[k], 0);
+                }
                 if (!listFilter.kind || listFilter.kind === 'all' || listFilter.kind === 'fraction') {
                     // 分数题卡片：筛选结果里的分数题数量（题型选了「整数题」时不显示分数题）
                     const frac = countsOfFilter(Object.assign({}, listFilter, { kind: 'fraction' }), item.counts);
@@ -966,6 +990,14 @@
                     ? '方程题：正确率 ' + fmtPct(eq.accuracy) + '，平均 ' + fmtMs(eq.avgMs)
                     : '方程题：还没做过';
 
+                // 口算题：同样走 stats.byTopic，老响应没有这个字段就当作没做过
+                const arith = (st.byTopic && st.byTopic.arithmetic) || {};
+                const arithCorrect = CORRECT_KEYS.reduce((n, k) => n + (arith[k] || 0), 0);
+                const arithCell = td(tr, arith.total ? arithCorrect + '/' + arith.total : '—', 'num');
+                arithCell.title = arith.total
+                    ? '口算题：正确率 ' + fmtPct(arith.accuracy) + '，平均 ' + fmtMs(arith.avgMs)
+                    : '口算题：还没做过';
+
                 const opCell = td(tr, '', 'num');
                 const btn = document.createElement('button');
                 btn.type = 'button';
@@ -1012,7 +1044,7 @@
                     levelCell.appendChild(ftag);
                 }
                 // 题型列：旧记录没有 topic，按「化简」显示
-                td(tr, isEquation(a) ? '方程' : '化简');
+                td(tr, isEquation(a) ? '方程' : (isArithmetic(a) ? '口算' : '化简'));
                 tdMath(tr, a.question);
                 tdMath(tr, a.studentAnswer);
                 tdMath(tr, a.answer);
@@ -1057,6 +1089,8 @@
             totals.correctFraction = 0;
             totals.totalEquation = 0;
             totals.correctEquation = 0;
+            totals.totalArithmetic = 0;
+            totals.correctArithmetic = 0;
             // 稀疏计数里没有按题型的「总数」，分数题的总数和算对数只能回原始汇总（stats.fraction）
             const frac = (mineStats && mineStats.fraction) || null;
             const filterKind = mineFilter.kind;
@@ -1071,6 +1105,13 @@
             if (needEquation && eq) {
                 totals.totalEquation = eq.total || 0;
                 totals.correctEquation = (eq.correct || 0) + (eq.hintedCorrect || 0);
+            }
+            // 口算题走 stats.byTopic.arithmetic，老响应没有这个字段就当作没做过
+            const arith = (mineStats && mineStats.byTopic && mineStats.byTopic.arithmetic) || null;
+            const needArithmetic = !filterKind || filterKind === 'arithmetic';
+            if (needArithmetic && arith) {
+                totals.totalArithmetic = arith.total || 0;
+                totals.correctArithmetic = (arith.correct || 0) + (arith.hintedCorrect || 0);
             }
             return totals;
         }

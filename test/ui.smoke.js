@@ -1501,6 +1501,696 @@ if (equationEngine) {
     eqCheck(typeof eqTex === 'string' && eqTex.length > 0, 'toLatexText(x=4) 应返回可用文本，实际 ' + eqTex);
 }
 
+// ============================================================
+// 下面是「口算训练」练习页（math.html + math-drill-page.js + arith-engine.js）
+// ============================================================
+// 第三种练习题型：档位、引擎、缓存键都和上面两页不同，但交互节奏（提示 / 错两次给过程 /
+// 看解析 / 锁键盘 / 下一题）必须与化简页、方程页一致，所以同样复用 bootPage 和 cellText/cellTex。
+// 口算页引擎（arith-engine.js）由队友并行开发：文件还没落地时全部记成失败项，
+// 而不是让测试半路崩掉——这样前两页的断言照样能跑出来。
+const mathHtmlSrc = readSrc('frontend/math.html');
+const mathDrillCode = readSrc('frontend/js/math-drill-page.js');
+function loadArithEngine() {
+    try {
+        // 与 equation-engine 一样是工厂：createArithEngine(math, core)
+        const factory = require(eqAbs('frontend/js/arith-engine.js'));
+        return { engine: factory(math, core), err: null };
+    } catch (e) {
+        return { engine: null, err: e };
+    }
+}
+const arithLoad = loadArithEngine();
+const arithEngineErr = arithLoad.err;
+
+const MATH_KEY = 'arith_current_q:u_test';   // 与 math-drill-page.js 里的 `arith_current_q:` + 用户 id 一致
+// 固定题：① 入门档三项连算式（答案 41 = -6 + 52 - 5），tags 为空（纯整数题）。
+// 「下一题」之后页面用引擎随机出题，需要真答案的地方一律从缓存读页面当前的题。
+const FixedArith = { level: 1, question: '-6 + 52 - 5', answer: '41', tags: [] };
+
+// 口算页软键盘：0-9、+ - * / . ( )，无字母键、无 ^2/^3；动作键五个，提交键 class 里带 submit
+const ARITH_KEY_SPECS = [
+    { name: 'k_7', val: '7' }, { name: 'k_8', val: '8' }, { name: 'k_9', val: '9' },
+    { name: 'k_+', val: '+' }, { name: 'k_-', val: '-' },
+    { name: 'k_4', val: '4' }, { name: 'k_5', val: '5' }, { name: 'k_6', val: '6' },
+    { name: 'k_*', val: '*' }, { name: 'k_/', val: '/' },
+    { name: 'k_1', val: '1' }, { name: 'k_2', val: '2' }, { name: 'k_3', val: '3' },
+    { name: 'k_.', val: '.' }, { name: 'k_(', val: '(' },
+    { name: 'k_0', val: '0' }, { name: 'k_)', val: ')' },
+    { name: 'clear', action: 'clear', classes: 'action' },
+    { name: 'hint', action: 'hint', classes: 'action' },
+    { name: 'giveup', action: 'giveup', classes: 'action' },
+    { name: 'backspace', action: 'backspace', classes: 'action' },
+    { name: 'submit', action: 'submit', classes: 'submit' }
+];
+
+// 计数壳：原样透传引擎行为，同时能核对「页面确实问了引擎」
+const arithCalls = {};
+const arithEngine = arithEngineErr ? null : new Proxy(arithLoad.engine, {
+    get(target, prop) {
+        const value = target[prop];
+        if (typeof value !== 'function') return value;
+        return function (...args) {
+            arithCalls[prop] = (arithCalls[prop] || 0) + 1;
+            return value.apply(target, args);
+        };
+    }
+});
+
+const mathCheck = (cond, msg) => check(cond, '[口算页] ' + msg);
+// 直接问未包装的引擎（引擎半成品时可能抛异常，不能把测试进程带崩）
+const arithEvalRaw = (student, answer) => {
+    if (!arithLoad.engine) return { status: 'no-engine', msg: 'arith-engine 未加载' };
+    try {
+        const r = arithLoad.engine.evaluateAnswer(student, answer);
+        return r && typeof r === 'object' ? r : { status: 'bad-return', msg: String(r) };
+    } catch (e) {
+        return { status: 'throw', msg: e && e.message ? e.message : String(e) };
+    }
+};
+const arithSafe = (fn, fallback) => { try { return fn(); } catch (e) { return fallback; } };
+// 只归一化空白（题面/答案本身的字符要原样比）
+const arithNorm = (s) => String(s == null ? '' : s).replace(/\s+/g, '');
+// 把页面渲染的 LaTeX 还原成可比较的纯文本（与方程页同一套排版糖）。
+// 先把 \dfrac{a}{b} 还原成 a/b，再去掉括号和空白：
+// 纯文本的 "1/25" 与 LaTeX 的 "\dfrac{1}{25}" 只差这层排版糖，必须能比得上。
+const mathTexNorm = (s) => String(s == null ? '' : s)
+    .replace(/\\left|\\right/g, '')
+    .replace(/\\[;,!:]/g, '')
+    .replace(/\\cdot/g, '*')
+    .replace(/\\[dt]?frac\{([^{}]*)\}\{([^{}]*)\}/g, '$1/$2')
+    .replace(/[{}]/g, '')
+    .replace(/[\s()]/g, '');
+// 过程里的 expr 可能是「链条式」写法（`(-12)^2 = -12 * -12 = 144`，整段不是单个表达式，
+// toLatexText 对它返回 null，页面会退回纯文本渲染）。比较末步值时只取等号最后一段。
+const stepValueNorm = (s) => {
+    const text = String(s == null ? '' : s);
+    const tail = text.includes('=') ? text.slice(text.lastIndexOf('=') + 1) : text;
+    const tex = arithSafe(() => arithLoad.engine.toLatexText(tail), null);
+    return mathTexNorm(tex || tail);
+};
+
+async function bootMathDrill(cached, opts) {
+    if (!mathDrillCode || !arithEngine) return null;
+    Object.keys(arithCalls).forEach(k => delete arithCalls[k]);
+    // 另外两页的缓存放哨兵：口算页若误写/误清它们的键，下面的断言能抓到
+    const cachedMap = { [PolyKey]: PolySentinel, [EQ_KEY]: PolySentinel };
+    if (cached !== undefined) cachedMap[MATH_KEY] = JSON.stringify(cached);
+    return bootPage({
+        code: mathDrillCode,
+        engine: arithEngine,
+        engineGlobal: 'ArithEngine',
+        keyboard: ARITH_KEY_SPECS,
+        confirm: (opts && opts.confirm) || (() => true),
+        cached: cachedMap,
+        opts: opts && opts.opts
+    });
+}
+
+// 缓存里当前那道题（页面每换一题都写回缓存，是「页面认为的当前题」的可靠来源）
+const cachedMathNow = () => {
+    try { return JSON.parse(store.get(MATH_KEY)); } catch (e) { return null; }
+};
+
+if (!mathDrillCode) mathCheck(false, '缺少 frontend/js/math-drill-page.js，口算页交互无法冒烟');
+if (!arithEngine) {
+    mathCheck(false, 'arith-engine.js 加载失败：' + (arithEngineErr && arithEngineErr.message || '未知错误'));
+}
+
+// ---------- 静态：math.html 的结构 ----------
+if (!mathHtmlSrc) {
+    mathCheck(false, '缺少 frontend/math.html');
+} else {
+    const mh = mathHtmlSrc;
+    mathCheck(/<title>\s*口算训练\s*<\/title>/.test(mh), 'math.html 的 title 应为「口算训练」');
+    // 首帧夜间模式脚本必须在 <head> 里（不然刷新会先闪一下白底）
+    const headBlock = mh.slice(0, mh.indexOf('</head>'));
+    mathCheck(/poly-theme/.test(headBlock) && /data\.?theme|setAttribute\('data-theme'/i.test(headBlock),
+        'math.html 的 <head> 里应有夜间模式首帧脚本');
+    mathCheck(headBlock.includes('document.documentElement'), '夜间模式脚本应挂在 documentElement 上');
+
+    const nav = navFromHtml(mh);
+    mathCheck(nav.hasNav, 'math.html 应带侧边栏（#app-nav）');
+    mathCheck(nav.bodyAuth === 'app', 'body 的 data-auth 应为 app，实际 ' + nav.bodyAuth);
+    mathCheck(nav.links.length === navFromHtml(fs.readFileSync(path.join(root, 'frontend', 'equations.html'), 'utf8')).links.length,
+        '侧边栏链接数量应与方程页一致（同一段导航）');
+    const arithLink = nav.links.filter(l => l.nav === 'arithmetic');
+    mathCheck(arithLink.length === 1, '侧边栏「练习」组里应有一条 data-nav="arithmetic"，实际 ' + arithLink.length);
+    mathCheck(arithLink[0] && stripVer(arithLink[0].href) === 'math.html',
+        '口算页链接应指向 math.html，实际 ' + (arithLink[0] && arithLink[0].href));
+    mathCheck(arithLink[0] && arithLink[0].text === '口算训练',
+        '口算页链接文字应为「口算训练」，实际 ' + (arithLink[0] && arithLink[0].text));
+    mathCheck(arithLink[0] && arithLink[0].ariaCurrent === 'page', '本页链接应带 aria-current="page"');
+    mathCheck(/data-nav="arithmetic"[\s\S]{0,200}±|±[\s\S]{0,200}data-nav="arithmetic"/.test(nav.navBlock),
+        '口算页侧边栏图标应为 ±');
+    mathCheck((nav.navBlock.match(/aria-current="page"/g) || []).length === 1,
+        '侧边栏里只应有一个 aria-current="page"（本页）');
+
+    // 引用顺序：样式 → 三方库 → 引擎 → 导航 → 页面脚本
+    mathCheck(nav.headLinks.join('|') === 'vendor/katex/katex.min.css|css/practice.css|css/app-nav.css|css/math-drill.css',
+        'math.html 的样式引用顺序不对：' + nav.headLinks.join('|'));
+    mathCheck(nav.headScripts.join('|') === 'vendor/katex/katex.min.js|vendor/math.js|js/arith-engine.js',
+        'math.html 的 head 脚本顺序不对：' + nav.headScripts.join('|'));
+    const bodyScripts = [...mh.matchAll(/<script\s+src="([^"]+)"/g)].map(x => stripVer(x[1]));
+    mathCheck(JSON.stringify(bodyScripts) === JSON.stringify(['vendor/katex/katex.min.js', 'vendor/math.js',
+        'js/arith-engine.js', 'js/app-nav.js', 'js/math-drill-page.js']),
+        'math.html 的全部脚本顺序不对：' + bodyScripts.join('|'));
+    // 本地资源一律带 ?v= 版本号（与其它页面同一个提交号）
+    const localRefs = [...mh.matchAll(/(?:href|src)="((?:css|js)\/[^"]+)"/g)].map(x => x[1]);
+    mathCheck(localRefs.length >= 6, '本地 css/js 引用数量异常：' + localRefs.length);
+    mathCheck(localRefs.every(u => /\?v=[0-9a-f]{6,}$/.test(u)),
+        '本地 css/js 引用应带 ?v= 版本号：' + localRefs.filter(u => !/\?v=/.test(u)).join('|'));
+    mathCheck(localRefs.every(u => u.split('?')[0] !== 'vendor/katex/katex.min.js'),
+        'vendor 下的三方库不参与本地版本号规则（这里仅确认路径没被改坏）');
+    // 软键盘与主内容之间不能夹 <script>（脚本必须统一放在 </main> 之后）
+    const kbIdx = mh.indexOf('id="keyboard"');
+    const mainEnd = mh.indexOf('</main>');
+    mathCheck(kbIdx > 0 && mainEnd > kbIdx && mh.slice(kbIdx, mainEnd).indexOf('<script') < 0,
+        '软键盘到 </main> 之间不应出现 <script>');
+    // 四档按钮文案（SPEC 3.2）
+    ['① 入门', '② 基础', '③ 进阶', '④ 挑战'].forEach(t =>
+        mathCheck(mh.includes(t), 'math.html 应有难度按钮「' + t + '」'));
+}
+
+// ---------- 静态：math.html 的软键盘 ----------
+let mathHtmlKeys = [];
+if (mathHtmlSrc) {
+    try {
+        mathHtmlKeys = keysFromHtml(mathHtmlSrc, 'math.html');
+    } catch (e) {
+        mathCheck(false, 'math.html 软键盘解析失败: ' + e.message);
+    }
+    if (mathHtmlKeys.length) {
+        const vals = mathHtmlKeys.filter(k => k.val).map(k => k.val);
+        const acts = mathHtmlKeys.filter(k => k.action).map(k => k.action);
+        ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'].forEach(d =>
+            mathCheck(vals.includes(d), 'math.html 软键盘缺数字键: ' + d));
+        ['+', '-', '*', '/', '.', '(', ')'].forEach(s =>
+            mathCheck(vals.includes(s), 'math.html 软键盘缺符号键: ' + s));
+        mathCheck(!vals.some(v => /^[a-zA-Z]$/.test(v)), 'math.html 软键盘不应出现字母键: '
+            + vals.filter(v => /^[a-zA-Z]$/.test(v)).join(','));
+        mathCheck(!vals.some(v => /^\^/.test(v)), 'math.html 软键盘不应出现 ^2/^3: '
+            + vals.filter(v => /^\^/.test(v)).join(','));
+        mathCheck(vals.length === 17, '软键盘应有 17 个数值键（10 数字 + 7 符号），实际 ' + vals.length);
+        mathCheck(vals.join(',') === '7,8,9,+,-,4,5,6,*,/,1,2,3,.,(,0,)',
+            '软键盘键位顺序不对：' + vals.join(','));
+        mathCheck(['clear', 'backspace', 'hint', 'giveup', 'submit'].every(a => acts.includes(a)),
+            '软键盘应有 clear/backspace/hint/giveup/submit 五个动作键，实际 ' + acts.join(','));
+        mathCheck(mathHtmlKeys.length === 22, '软键盘应为 17 + 5 = 22 个键，实际 ' + mathHtmlKeys.length);
+        const submitKeySpec = mathHtmlKeys.filter(k => k.action === 'submit')[0];
+        mathCheck(!!submitKeySpec && /\bsubmit\b/.test(submitKeySpec.classes),
+            '「提交答案」键应带 .key.submit 类，实际 class: ' + (submitKeySpec && submitKeySpec.classes));
+        mathCheck(!!submitKeySpec && /提交/.test(submitKeySpec.text),
+            '提交键文案应含「提交」，实际 ' + (submitKeySpec && submitKeySpec.text));
+        ['清空', '退格', '提示', '看解析'].forEach(t =>
+            mathCheck(mathHtmlKeys.some(k => k.text === t), '软键盘应有「' + t + '」键'));
+        // 页面软键盘必须和测试夹具一致（多了/少了一个键就失败）
+        const specVals = ARITH_KEY_SPECS.filter(k => k.val).map(k => k.val);
+        const specActs = ARITH_KEY_SPECS.filter(k => k.action).map(k => k.action);
+        mathCheck(specVals.join(',') === vals.join(','), '测试夹具的数值键应与页面一致：'
+            + specVals.join(',') + ' vs ' + vals.join(','));
+        mathCheck(specActs.join(',') === acts.join(','), '测试夹具的动作键应与页面一致：'
+            + specActs.join(',') + ' vs ' + acts.join(','));
+    }
+}
+
+// ---------- 动态：口算页交互 ----------
+if (mathDrillCode && arithEngine) {
+    const bootOk = await (async () => {
+        try {
+            const page = await bootMathDrill(Object.assign({}, FixedArith, {
+                startedAt: Date.now(), clientId: 'c_arith'
+            }));
+            return page;
+        } catch (e) {
+            mathCheck(false, '口算页启动抛异常: ' + (e && e.message ? e.message : String(e)));
+            return null;
+        }
+    })();
+
+    if (bootOk) {
+        const p = bootOk;
+        // 1. 缓存恢复：默认应接着做缓存里那道①档题
+        mathCheck(activeLevelOf(p.tabs) === '1', '缓存是①档题时应停留在①档，实际 ' + activeLevelOf(p.tabs));
+        mathCheck(arithNorm(mathTexNorm(p.question._tex)) === arithNorm(FixedArith.question),
+            '题目应按缓存渲染，实际 ' + p.question._tex);
+        mathCheck(p.tag.hidden === true, '整数题不应显示「分数」标签');
+        mathCheck(p.steps.hidden === true && p.hints.hidden === true, '初始应隐藏提示与解析面板');
+        mathCheck(p.keys.submit.textContent === '提交答案', '提交键文案不对: ' + p.keys.submit.textContent);
+        mathCheck(p.feedback.textContent === '', '初始不应有反馈文案，实际 ' + p.feedback.textContent);
+
+        // 2. 顶部档名 + 内容（「① 入门 · 百以内正负数加减」）
+        //    bootPage 的桩不建 #level-label / #level-desc：页面脚本必须能在缺节点时安全跳过
+        const labelEl = document.getElementById('level-label');
+        if (labelEl) {
+            const labelText = String(labelEl.textContent || '');
+            mathCheck(/①\s*入门/.test(labelText) && /百以内正负数加减/.test(labelText),
+                '顶部应显示「① 入门 · 百以内正负数加减」，实际 ' + labelText);
+        }
+        mathCheck(p.lastError() === null, '缺 #level-label 时页面不应抛异常');
+
+        // 3. 键盘输入 + 提交 → 答对反馈
+        p.type('41');
+        mathCheck(arithNorm(mathTexNorm(p.input._tex)) === '41', '键入 41 后输入区应显示 41，实际 ' + p.input._tex);
+        p.click('submit');
+        check(p.lastError() === null, '[口算页] 提交时抛异常: ' + (p.lastError() && p.lastError().message));
+        mathCheck(/正确|对了|答对/.test(p.feedback.textContent),
+            '答对应提示正确，实际反馈: ' + p.feedback.textContent);
+        mathCheck(p.steps.hidden === false, '答对后也应展开完整过程');
+        mathCheck(p.keys.submit.textContent === '下一题' && p.keys.submit.dataset.action === 'next',
+            '答对后应停在本题等「下一题」，实际按钮: ' + p.keys.submit.textContent);
+        const okLast = cellTex(p.steps.children[p.steps.children.length - 1], 1);
+        mathCheck(okLast !== null && stepValueNorm(okLast) === stepValueNorm(FixedArith.answer),
+            '过程末步应等于答案 ' + FixedArith.answer + '，实际 ' + okLast);
+
+        // 3b. 步骤渲染的三级优先级 + 「为什么」说明行
+        //   引擎 buildSteps 的每一步除 {title, expr} 外还可能带 tex / detail / detailTex。
+        //   页面的约定：有 tex 就直接当 KaTeX 源码渲（不再走 toLatexText），
+        //   没有 tex 才 toLatexText(expr)，再不行纯文本；有 detail/detailTex 就多一行 .step-detail。
+        const okStepRows = p.steps.children.filter(r => r && r.classList && r.classList.contains('step-row'));
+        mathCheck(okStepRows.length >= 2, '过程应有 ≥2 行 .step-row，实际 ' + okStepRows.length);
+
+        // 用引擎对这一题现算一遍，拿到它给的 tex/detail，与页面渲染结果对照
+        const okEngineSteps = arithSafe(() => arithLoad.engine.buildSteps(FixedArith.question, FixedArith.answer), []) || [];
+        const bodyOf = (row) => (row.children || []).filter(c => c && c.classList && c.classList.contains('step-body'))[0] || null;
+        const noteOf = (row) => (row.children || []).filter(c => c && c.classList && c.classList.contains('step-detail'))[0] || null;
+
+        // tex 分支：某步自带 tex 时，页面喂给 katex 的必须是这段 tex 本身（不是 toLatexText(expr) 的产物）
+        const texIdx = okEngineSteps.findIndex(s => s && typeof s.tex === 'string' && s.tex.trim() !== ''
+            && typeof s.expr === 'string' && s.expr.trim() !== '' && s.tex.trim() !== s.expr.trim());
+        if (texIdx >= 0) {
+            const wantTex = okEngineSteps[texIdx].tex.trim();
+            const gotBody = okStepRows[texIdx] ? bodyOf(okStepRows[texIdx]) : null;
+            mathCheck(!!gotBody && gotBody._tex !== undefined && String(gotBody._tex).trim() === wantTex,
+                '第 ' + (texIdx + 1) + ' 步应直接用引擎给的 tex 渲染，期望 ' + JSON.stringify(wantTex)
+                + '，实际 ' + JSON.stringify(gotBody && gotBody._tex));
+            // 反向证明：这段 tex 与「对 expr 再 toLatexText」的结果不同，
+            // 说明页面确实走了 tex 分支而不是碰巧一样
+            const viaExpr = arithSafe(() => arithLoad.engine.toLatexText(okEngineSteps[texIdx].expr), null);
+            mathCheck(viaExpr === null || String(viaExpr).trim() !== wantTex,
+                '第 ' + (texIdx + 1) + ' 步的 tex 应与 toLatexText(expr) 不同，否则证明不了走了 tex 分支');
+            // 带 $...$ 时页面要剥掉分隔符（KaTeX.render 不认 $）
+            mathCheck(!!gotBody && !/\$/.test(String(gotBody._tex)),
+                '页面喂给 KaTeX 的 tex 不应残留 $ 分隔符，实际 ' + JSON.stringify(gotBody && gotBody._tex));
+        } else {
+            mathCheck(true, '');
+        }
+
+        // detail 分支：本档题若引擎给了说明，页面上就要出现对应的 .step-detail 小字行
+        const detailIdx = okEngineSteps.findIndex(s => s && (typeof s.detail === 'string' && s.detail.trim() !== ''
+            || typeof s.detailTex === 'string' && s.detailTex.trim() !== ''));
+        if (detailIdx >= 0) {
+            const wantDetail = String(okEngineSteps[detailIdx].detail || '').trim();
+            const wantDetailTex = String(okEngineSteps[detailIdx].detailTex || '').trim();
+            const gotRow = okStepRows[detailIdx];
+            const gotNote = gotRow ? noteOf(gotRow) : null;
+            mathCheck(!!gotNote, '第 ' + (detailIdx + 1) + ' 步带了 detail，页面上应有 .step-detail 说明行');
+            if (wantDetailTex) {
+                mathCheck(!!gotNote && gotNote._tex !== undefined && String(gotNote._tex).trim() === wantDetailTex,
+                    '有 detailTex 时应优先用它渲染说明行，期望 ' + JSON.stringify(wantDetailTex)
+                    + '，实际 ' + JSON.stringify(gotNote && gotNote._tex));
+            } else {
+                mathCheck(!!gotNote && String(gotNote.textContent) === wantDetail,
+                    '没有 detailTex 时说明行应显示 detail 原文，期望 ' + JSON.stringify(wantDetail)
+                    + '，实际 ' + JSON.stringify(gotNote && gotNote.textContent));
+            }
+            mathCheck(!!gotRow && gotRow.classList.contains('has-detail'),
+                '带说明的步骤行应加 .has-detail（CSS 靠它打开换行）');
+        } else {
+            // 本档题引擎没给 detail 是允许的：此时页面上就不该凭空多出说明行
+            mathCheck(okStepRows.every(r => noteOf(r) === null),
+                '引擎没给 detail 时不应出现 .step-detail 行');
+        }
+        // 锁键盘
+        const lockedInput = p.input._tex;
+        p.click('k_7');
+        mathCheck(p.input._tex === lockedInput, '本题结束后键盘应被锁住');
+
+        // 4. 下一题：换题、清空面板、按钮复原、缓存换成新题
+        const oldQ = p.question._tex;
+        p.click('submit');
+        check(p.lastError() === null, '[口算页] 下一题抛异常: ' + (p.lastError() && p.lastError().message));
+        mathCheck(String(p.question._tex || '').length > 0, '点下一题应渲染新题');
+        mathCheck(p.question._tex !== oldQ, '点下一题应换题');
+        mathCheck(p.steps.hidden === true && p.hints.hidden === true, '换题后应清空提示与解析');
+        mathCheck(p.keys.submit.textContent === '提交答案' && p.keys.submit.dataset.action === 'submit',
+            '换题后按钮应复原');
+        const nowQ = cachedMathNow();
+        mathCheck(!!nowQ && typeof nowQ.question === 'string' && nowQ.question.length > 0,
+            '换题后缓存里应是新题');
+        mathCheck(!!nowQ && typeof nowQ.clientId === 'string' && nowQ.clientId !== 'c_arith',
+            '新题应换一个 clientId（每题一个上报 id）');
+        mathCheck(!!nowQ && typeof nowQ.startedAt === 'number', '新题应带 startedAt');
+        mathCheck(store.get(PolyKey) === PolySentinel && store.get(EQ_KEY) === PolySentinel,
+            '口算页不应动其它题型的缓存');
+
+        // 5. 错两次 → 出完整过程 + 「你的答案」对照行，并锁题
+        //    新题的答案从缓存里读（引擎随机出题），故意写一个肯定不对的数
+        const realQ = nowQ || {};
+        const wrongInput = (String(realQ.answer) === '987654' ? '123456' : '987654');
+        const beforeWrong = apiCalls.length;
+        p.type(wrongInput);
+        p.click('submit');
+        mathCheck(/还有 1 次机会|再想想/.test(p.feedback.textContent),
+            '第一次错应只提示、不给解析，实际: ' + p.feedback.textContent);
+        mathCheck(p.steps.hidden === true, '第一次错不应直接给解析');
+        mathCheck(p.keys.submit.dataset.action === 'submit', '第一次错后仍可继续提交');
+        p.click('submit');
+        mathCheck(p.steps.hidden === false, '错两次应展开完整过程');
+        mathCheck(/两次/.test(p.feedback.textContent), '二次错反馈应说明错了两次，实际: ' + p.feedback.textContent);
+        mathCheck(p.keys.submit.textContent === '下一题', '错两次后按钮应变下一题');
+        const wrongMine = p.steps.children[1];
+        mathCheck(!!(wrongMine && wrongMine.classList.contains('step-mine')), '错两次时应显示「你的答案」对照行');
+        mathCheck(cellText(wrongMine, 0) === '你的答案', '对照行标签不对: ' + cellText(wrongMine, 0));
+        mathCheck(arithNorm(mathTexNorm(cellTex(wrongMine, 1))) === wrongInput,
+            '对照行应是学生原答案，实际 ' + cellTex(wrongMine, 1));
+        mathCheck(p.steps.children.length >= 4, '应含标题 + 对照行 + 至少 2 步，实际 ' + p.steps.children.length);
+        // 错误上报：两次错只在上报里算一条（错两次那一刻），且 revealed
+        await new Promise(r => setImmediate(r));
+        const wrongPosts = attemptsSince(beforeWrong);
+        mathCheck(wrongPosts.length === 1, '错两次应只上报 1 次（不满两次不报），实际 ' + wrongPosts.length);
+        mathCheck(wrongPosts[0] && wrongPosts[0].result === 'wrong' && wrongPosts[0].revealed === true,
+            '错两次应上报 wrong + revealed');
+        mathCheck(wrongPosts[0] && wrongPosts[0].gaveUp === false, '错两次被动给解析不应记 gaveUp');
+        mathCheck(wrongPosts[0] && wrongPosts[0].studentAnswer === wrongInput,
+            '错误上报应带学生答案，实际 ' + (wrongPosts[0] && wrongPosts[0].studentAnswer));
+
+        // 6. 看解析：走 confirm；取消则什么都不发生，确认才给过程
+        p.click('submit');   // 下一题
+        let confirmAsked = null;
+        const cancelPage = await bootMathDrill(Object.assign({}, FixedArith, {
+            startedAt: Date.now(), clientId: 'c_arith2'
+        }), { confirm: (msg) => { confirmAsked = msg; return false; } });
+        if (cancelPage) {
+            cancelPage.type('9');
+            cancelPage.click('giveup');
+            mathCheck(typeof confirmAsked === 'string' && confirmAsked.length > 0,
+                '看解析应先弹 confirm 确认，实际 ' + JSON.stringify(confirmAsked));
+            mathCheck(cancelPage.steps.hidden === true, 'confirm 取消后不应展开解析');
+            mathCheck(cancelPage.keys.submit.dataset.action === 'submit', 'confirm 取消后应仍可提交');
+            mathCheck(cancelPage.input._tex !== undefined && String(cancelPage.input._tex) === '9',
+                'confirm 取消后输入应保持不变，实际 ' + cancelPage.input._tex);
+        }
+        const giveBefore = apiCalls.length;
+        p.type('9');
+        p.click('giveup');
+        mathCheck(p.steps.hidden === false, '看解析应展开完整过程');
+        mathCheck(p.keys.submit.textContent === '下一题', '看解析后应停在本题等下一题，实际 ' + p.keys.submit.textContent);
+        const giveMine = p.steps.children[1];
+        mathCheck(!!(giveMine && giveMine.classList.contains('step-mine')), '看解析时应显示「你的答案」对照行');
+        mathCheck(arithNorm(mathTexNorm(cellTex(giveMine, 1))) === '9', '对照行应是学生原答案，实际 ' + cellTex(giveMine, 1));
+        const giveLast = cellTex(p.steps.children[p.steps.children.length - 1], 1);
+        mathCheck(giveLast !== null && String(giveLast).length > 0, '看解析的最后一步不应为空');
+        await new Promise(r => setImmediate(r));
+        const givePosts = attemptsSince(giveBefore);
+        mathCheck(givePosts.length === 1, '看解析应上报 1 次，实际 ' + givePosts.length);
+        mathCheck(givePosts[0] && givePosts[0].result === 'wrong' && givePosts[0].revealed === true
+            && givePosts[0].gaveUp === true, '看解析应上报 wrong + revealed + gaveUp');
+        mathCheck(givePosts[0] && givePosts[0].studentAnswer === '9', '看解析应带学生原答案');
+        // 看解析后锁键盘
+        const locked2 = p.input._tex;
+        p.click('k_5');
+        mathCheck(p.input._tex === locked2, '看解析后键盘应被锁住');
+
+        // 7. 上报 payload：topic 必须是 arithmetic，result 只允许三种值
+        //    只看本页的请求缓冲（p.calls）：apiCalls 里还混着化简页/方程页的历史上报，
+        //    化简页的 payload 本来就不带 topic（是未改造的老页面），拿它来比会误伤。
+        const pagePosts = p.calls.filter(c => c.url === '/api/attempts')
+            .map(c => { try { return JSON.parse(c.opts.body); } catch (e) { return null; } });
+        const allMathPosts = pagePosts.filter(x => x);
+        mathCheck(allMathPosts.length > 0, '口算页应上报记录，实际 ' + allMathPosts.length);
+        mathCheck(allMathPosts.every(x => x.topic === 'arithmetic'),
+            '口算页每条上报都应带 topic:"arithmetic"，实际 '
+            + [...new Set(allMathPosts.map(x => x.topic))].join(','));
+        mathCheck(allMathPosts.every(x => ['correct', 'wrong', 'error'].includes(x.result)),
+            'result 只允许 correct/wrong/error，实际 '
+            + [...new Set(allMathPosts.map(x => x.result))].join(','));
+        mathCheck(allMathPosts.every(x => Array.isArray(x.tags)), '上报应带 tags 数组');
+        mathCheck(allMathPosts.every(x => typeof x.level === 'number' && x.level >= 1 && x.level <= 4),
+            '上报应带 1~4 的难度');
+        mathCheck(allMathPosts.every(x => typeof x.question === 'string' && typeof x.answer === 'string'),
+            '上报应带题面与标准答案');
+        mathCheck(allMathPosts.every(x => typeof x.usedHint === 'boolean' && typeof x.revealed === 'boolean'
+            && typeof x.gaveUp === 'boolean' && typeof x.ms === 'number' && x.ms >= 0),
+            '上报应带 usedHint/revealed/gaveUp/ms');
+        mathCheck(allMathPosts.every(x => typeof x.clientId === 'string' && x.clientId.length > 0),
+            '上报应带 clientId');
+
+// 7b. tex / detail 分支：用一道②档分数题验证「引擎给的 tex 优先」和「detail 说明行」
+        //     ①档整数题的 tex 与 expr 恰好一样、也没有 detail，用它会走空分支证明不了任何事，
+        //     所以这里单开一页，缓存一道已知的分数题：3/4 + 1/2 = 5/4
+        //     引擎对这道题的末步 expr 是 '5/4'，页面绝不能把它显示成「3 + 1/2」这种带分数，
+        //     必须是正经的 \dfrac{5}{4}（答案长什么样，结果就长什么样）。
+        const FixedArithFrac = { level: 2, question: '3/4 + 1/2', answer: '5/4', tags: ['fraction'] };
+        const fracPage = await bootMathDrill(Object.assign({}, FixedArithFrac, {
+            startedAt: Date.now(), clientId: 'c_arithfrac'
+        }));
+        if (!fracPage) {
+            mathCheck(false, '分数题页面未能启动');
+        } else {
+            mathCheck(fracPage.lastError() === null, '[口算页] 分数题启动抛异常: '
+                + (fracPage.lastError() && fracPage.lastError().message));
+            // 分数题应点亮「分数」标签
+            mathCheck(fracPage.tag && fracPage.tag.hidden === false
+                && /分数/.test(String(fracPage.tag.textContent)),
+                '分数题应显示「分数」标签，实际 ' + JSON.stringify(fracPage.tag && fracPage.tag.textContent));
+
+            // 直接答对，让过程展开
+            fracPage.click('k_5'); fracPage.click('k_/'); fracPage.click('k_4');
+            fracPage.click('submit');
+            check(fracPage.lastError() === null, '[口算页] 分数题提交抛异常: '
+                + (fracPage.lastError() && fracPage.lastError().message));
+            mathCheck(/正确|对了|答对/.test(String(fracPage.feedback.textContent)),
+                '分数题答对应提示正确，实际 ' + JSON.stringify(fracPage.feedback.textContent));
+
+            const fracRows = fracPage.steps.children.filter(r => r && r.classList
+                && r.classList.contains('step-row'));
+            const engSteps = arithSafe(() => arithLoad.engine.buildSteps(FixedArithFrac.question, FixedArithFrac.answer), []) || [];
+            const rowBody = (row) => (row.children || []).filter(c => c && c.classList
+                && c.classList.contains('step-body'))[0] || null;
+            const rowNote = (row) => (row.children || []).filter(c => c && c.classList
+                && c.classList.contains('step-detail'))[0] || null;
+
+            mathCheck(fracRows.length === engSteps.length && engSteps.length >= 2,
+                '分数题过程行数应与引擎步数一致，页面 ' + fracRows.length + ' 步 / 引擎 ' + engSteps.length + ' 步');
+
+            // (a) tex 分支：每一步喂给 KaTeX 的都应是引擎给的 step.tex，而不是 toLatexText(expr)
+            let texChecked = 0;
+            engSteps.forEach((st, idx) => {
+                if (!st || typeof st.tex !== 'string' || st.tex.trim() === '') return;
+                const body = fracRows[idx] ? rowBody(fracRows[idx]) : null;
+                mathCheck(!!body && body._tex !== undefined && String(body._tex).trim() === st.tex.trim(),
+                    '第 ' + (idx + 1) + ' 步应直接用引擎给的 tex，期望 ' + JSON.stringify(st.tex.trim())
+                    + '，实际 ' + JSON.stringify(body && body._tex));
+                texChecked++;
+            });
+            mathCheck(texChecked >= 2, '应至少校验 2 步的 tex 直通，实际 ' + texChecked);
+
+            // 反向证明：换一道「负号在括号里」的分数题，它的某一步 expr 是 `1/8 + -32/8`，
+            // 引擎给的 tex 是 `\dfrac{1}{8} + -\dfrac{32}{8}`，走 toLatexText(expr) 却会渲染成
+            // `\dfrac{1}{8} + \left(-\dfrac{32}{8}\right)` —— 两个 tex 确实不同，页面若偷偷走后者，
+            // 下面的断言能抓到。（为什么不用上面那道：3/4 + 1/2 每一步的 tex 恰好都等于 toLatexText。）
+            const TexProbe = { level: 2, question: '5/8 - 1/2 + (-4)', answer: '-31/8', tags: ['fraction'] };
+            const probeSteps = arithSafe(() => arithLoad.engine.buildSteps(TexProbe.question, TexProbe.answer), null);
+            const texDiffIdx = Array.isArray(probeSteps) ? probeSteps.findIndex(st => st
+                && typeof st.tex === 'string' && st.tex.trim() !== ''
+                && String(arithSafe(() => arithLoad.engine.toLatexText(st.expr), '') || '').trim() !== st.tex.trim()) : -1;
+            mathCheck(texDiffIdx >= 0,
+                '夹具失效：题「' + TexProbe.question + '」应当有步骤的 tex 与 toLatexText(expr) 不同，否则证明不了 tex 分支');
+            if (texDiffIdx >= 0) {
+                const wantTex = String(probeSteps[texDiffIdx].tex).trim();
+                const viaTex = String(arithSafe(() => arithLoad.engine.toLatexText(probeSteps[texDiffIdx].expr), '') || '').trim();
+                const probePage = await bootMathDrill(Object.assign({}, TexProbe, {
+                    startedAt: Date.now(), clientId: 'c_arithtex'
+                }));
+                if (!probePage) {
+                    mathCheck(false, 'tex 分支夹具页面未能启动');
+                } else {
+                    mathCheck(probePage.lastError() === null, '[口算页] tex 夹具启动抛异常: '
+                        + (probePage.lastError() && probePage.lastError().message));
+                    // 直接点「看解析」：不用真答对也能让过程展开（老师面板口吻，规矩同另外两页）
+                    const probeRows0 = probePage.steps.children.filter(r => r && r.classList
+                        && r.classList.contains('step-row'));
+                    if (probeRows0.length === 0) probePage.click('giveup');
+                    const probeRows = probePage.steps.children.filter(r => r && r.classList
+                        && r.classList.contains('step-row'));
+                    mathCheck(probeRows.length >= probeSteps.length,
+                        'tex 夹具应展开全部过程，实际 ' + probeRows.length + ' 行 / 引擎 ' + probeSteps.length + ' 步');
+                    const probeBody = probeRows[texDiffIdx] ? rowBody(probeRows[texDiffIdx]) : null;
+                    mathCheck(!!probeBody && String(probeBody._tex).trim() === wantTex,
+                        '第 ' + (texDiffIdx + 1) + ' 步应显示引擎的 tex（' + wantTex + '），而不是 toLatexText 的产物（'
+                        + viaTex + '），实际 ' + JSON.stringify(probeBody && probeBody._tex));
+                }
+            }
+
+            // (b) detail 分支：「通分」步带 detail，页面上要出现 .step-detail 说明行且文字一致
+            const detailIdx = engSteps.findIndex(st => st && (typeof st.detail === 'string' && st.detail.trim() !== ''
+                || typeof st.detailTex === 'string' && st.detailTex.trim() !== ''));
+            mathCheck(detailIdx >= 0, '夹具失效：分数题应有一步带 detail（通分说明）');
+            if (detailIdx >= 0) {
+                const wantDetail = String(engSteps[detailIdx].detail || '').trim();
+                const wantDetailTex = String(engSteps[detailIdx].detailTex || '').trim();
+                const noteRow = fracRows[detailIdx];
+                const note = noteRow ? rowNote(noteRow) : null;
+                mathCheck(!!note, '带 detail 的步骤下面应有 .step-detail 说明行');
+                if (wantDetailTex) {
+                    mathCheck(!!note && note._tex !== undefined && String(note._tex).trim() === wantDetailTex,
+                        '有 detailTex 时应优先渲染它，实际 ' + JSON.stringify(note && note._tex));
+                } else {
+                    mathCheck(!!note && String(note.textContent) === wantDetail,
+                        '没有 detailTex 时说明行应显示 detail 原文，期望 ' + JSON.stringify(wantDetail)
+                        + '，实际 ' + JSON.stringify(note && note.textContent));
+                }
+                mathCheck(!!noteRow && noteRow.classList.contains('has-detail'),
+                    '带说明的步骤行应加 .has-detail（CSS 靠它打开换行）');
+                // 说明行必须是该行自己的子节点，不能挂到别的步骤上
+                mathCheck(!!note && (noteRow.children || []).indexOf(note) === (noteRow.children || []).length - 1,
+                    '.step-detail 应是该步骤行的最后一个子节点');
+            }
+
+            // (c) 不带 detail 的步骤不应凭空多出说明行
+            const noDetailCount = engSteps.filter(st => st && !(typeof st.detail === 'string' && st.detail.trim())
+                && !(typeof st.detailTex === 'string' && st.detailTex.trim())).length;
+            const actualNotes = fracRows.filter(r => rowNote(r) !== null).length;
+            mathCheck(actualNotes === engSteps.length - noDetailCount,
+                '说明行数量应等于带 detail 的步数，实际 ' + actualNotes + ' 行 / 应 ' + (engSteps.length - noDetailCount) + ' 行');
+        }        // 8. 夜间模式：默认亮色 → 切深色并记住 → 重进恢复
+        const themePage = await bootMathDrill(Object.assign({}, FixedArith, {
+            startedAt: Date.now(), clientId: 'c_arith3'
+        }));
+        if (themePage) {
+            mathCheck(themePage.docEl.getAttribute('data-theme') === null, '默认应为白天模式');
+            mathCheck(themePage.themeBtn.textContent === '🌙', '白天时按钮应显示 🌙，实际 ' + themePage.themeBtn.textContent);
+            const toggle = () => (themePage.themeBtn.handlers.click || []).forEach(fn => fn({ target: themePage.themeBtn }));
+            toggle();
+            mathCheck(themePage.docEl.getAttribute('data-theme') === 'dark', '点一次应切到夜间模式');
+            mathCheck(themePage.themeBtn.getAttribute('aria-pressed') === 'true', '夜间时 aria-pressed 应为 true');
+            mathCheck(store.get('poly-theme') === 'dark', '夜间模式应写进 localStorage');
+            const darkMath = await bootMathDrill(Object.assign({}, FixedArith, {
+                startedAt: Date.now(), clientId: 'c_arith4'
+            }), { opts: { theme: 'dark' } });
+            if (darkMath) {
+                mathCheck(darkMath.docEl.getAttribute('data-theme') === 'dark', '上次选了夜间模式，重进页面应直接是夜间');
+                mathCheck(darkMath.themeBtn.textContent === '☀️', '恢复夜间模式后按钮应为 ☀️');
+            }
+        }
+
+        // 9. 缓存时效：30 分钟前的题应丢弃、重新出①档题
+        const stalePage = await bootMathDrill(Object.assign({}, FixedArith, {
+            startedAt: Date.now() - 31 * 60 * 1000, clientId: 'c_stale'
+        }));
+        if (stalePage) {
+            const staleQ = cachedMathNow();
+            mathCheck(activeLevelOf(stalePage.tabs) === '1', '过期题应重新出①档题，实际档位 ' + activeLevelOf(stalePage.tabs));
+            mathCheck(!!staleQ && staleQ.question !== FixedArith.question,
+                '过期题应被丢掉、换成新题，实际 ' + (staleQ && staleQ.question));
+        }
+        const warmPage2 = await bootMathDrill(Object.assign({}, FixedArith, {
+            startedAt: Date.now() - 60 * 1000, clientId: 'c_warm_arith'
+        }));
+        if (warmPage2) {
+            mathCheck(activeLevelOf(warmPage2.tabs) === '1', '刚做过的题刷新后应接着做，实际 ' + activeLevelOf(warmPage2.tabs));
+            mathCheck(arithNorm(mathTexNorm(warmPage2.question._tex)) === arithNorm(FixedArith.question),
+                '30 分钟内的缓存题应原样恢复，实际 ' + warmPage2.question._tex);
+        }
+
+        // 10. 难度切换：换档要 confirm，确认后跳到该档并重新出题
+        let asked = null;
+        const lvPage = await bootMathDrill(Object.assign({}, FixedArith, {
+            startedAt: Date.now(), clientId: 'c_lv'
+        }), { confirm: (msg) => { asked = msg; return true; } });
+        if (lvPage) {
+            // 难度按钮的点击处理器挂在 #level-tabs 上（事件委托），tab 元素本身没有 handler
+            const tabHandlers = (document.getElementById('level-tabs').handlers.click || []);
+            tabHandlers.forEach(fn => fn({ target: lvPage.tabs[2] }));
+            mathCheck(typeof asked === 'string' && /切换难度/.test(asked),
+                '切换难度应先弹 confirm，实际 ' + JSON.stringify(asked));
+            mathCheck(activeLevelOf(lvPage.tabs) === '3', '确认后应跳到③档，实际 ' + activeLevelOf(lvPage.tabs));
+            const lvCached = cachedMathNow();
+            mathCheck(!!lvCached && lvCached.level === 3, '换档后的新题应记为③档，实际 '
+                + (lvCached && lvCached.level));
+            mathCheck(arithCalls.generateQuestion > 0, '换档应调用引擎出题');
+            // 取消切换：档位不变
+            let cancelAsked = null;
+            const lvCancel = await bootMathDrill(Object.assign({}, FixedArith, {
+                startedAt: Date.now(), clientId: 'c_lv_cancel'
+            }), { confirm: (msg) => { cancelAsked = msg; return false; } });
+            if (lvCancel) {
+                const handlers2 = (document.getElementById('level-tabs').handlers.click || []);
+                handlers2.forEach(fn => fn({ target: lvCancel.tabs[3] }));
+                mathCheck(typeof cancelAsked === 'string' && cancelAsked.length > 0,
+                    '取消换档也应先问 confirm');
+                mathCheck(activeLevelOf(lvCancel.tabs) === '1', '取消换档后应留在①档，实际 '
+                    + activeLevelOf(lvCancel.tabs));
+                mathCheck(arithNorm(mathTexNorm(lvCancel.question._tex)) === arithNorm(FixedArith.question),
+                    '取消换档不应换题，实际 ' + lvCancel.question._tex);
+            }
+        }
+    }
+}
+
+// ---------- 口算引擎自洽（页面依赖的四个接口都要在） ----------
+if (arithEngine) {
+    ['LEVELS', 'LEVEL_NAMES', 'generateQuestion', 'evaluateAnswer', 'buildSteps', 'hintsFor', 'toLatexText']
+        .forEach(name => mathCheck(arithLoad.engine[name] !== undefined, 'arith-engine 应导出 ' + name));
+    mathCheck(JSON.stringify(arithLoad.engine.LEVELS) === '[1,2,3,4]', 'LEVELS 应为 [1,2,3,4]');
+    mathCheck(arithLoad.engine.LEVEL_NAMES.length === 4, 'LEVEL_NAMES 应有 4 个档名');
+    ['① 入门', '② 基础', '③ 进阶', '④ 挑战'].forEach((t, i) => {
+        const name = arithLoad.engine.LEVEL_NAMES[i] || '';
+        mathCheck(t.includes(name), '第 ' + (i + 1) + ' 档档名应为「' + name + '」并出现在「' + t + '」里');
+    });
+
+    // 每档连出几题：题面可解析、答案是字符串、自判为 correct、过程末步等于答案、提示非空
+    const arithSeen = {};
+    for (const lv of [1, 2, 3, 4]) {
+        for (let i = 0; i < 6; i++) {
+            const q = arithSafe(() => arithLoad.engine.generateQuestion(lv), null);
+            if (!q) { mathCheck(false, '第 ' + lv + ' 档出题抛异常'); break; }
+            mathCheck(q.level === lv, '出题的 level 应为 ' + lv + '，实际 ' + q.level);
+            mathCheck(typeof q.question === 'string' && q.question.length > 0, '题面应为非空字符串');
+            mathCheck(typeof q.answer === 'string' && q.answer.length > 0,
+                '答案应为非空字符串，实际 ' + JSON.stringify(q.answer));
+            mathCheck(Array.isArray(q.tags), '题目应带 tags 数组');
+            mathCheck(/^[0-9+\-*/().^ ]+$/.test(q.question), '题面不该出现字母或其它字符: ' + q.question);
+            arithSeen[q.question] = true;
+            const self = arithEvalRaw(q.answer, q.answer);
+            mathCheck(self.status === 'correct', '自己出的答案应判 correct: ' + q.question + ' → ' + self.status);
+            // 分数写 3/4 与小数写法都应能判对（SPEC 2.3）
+            const st = arithSafe(() => arithLoad.engine.buildSteps(q.question, q.answer), []) || [];
+            mathCheck(Array.isArray(st) && st.length >= 2, '生成的题应能给出 ≥2 步过程: ' + q.question);
+            mathCheck(st.length >= 1 && stepValueNorm(st[st.length - 1] && st[st.length - 1].expr)
+                === stepValueNorm(q.answer), '过程的末步应等于答案: ' + q.question + ' / ' + q.answer);
+            mathCheck(st.every(s => s && typeof s.title === 'string' && s.title && typeof s.expr === 'string' && s.expr),
+                '每一步都应有 title 与非空 expr: ' + q.question);
+            const hints = arithSafe(() => arithLoad.engine.hintsFor(q.question), null);
+            mathCheck(Array.isArray(hints) && hints.length >= 1 && hints.length <= 3,
+                '提示应有 1~3 条: ' + q.question + '，实际 ' + (hints && hints.length));
+            mathCheck(Array.isArray(hints) && hints.every(h => typeof h === 'string' && h.trim()),
+                '提示条目应为非空字符串: ' + q.question);
+            const tex = arithSafe(() => arithLoad.engine.toLatexText(q.question), 'THROW');
+            mathCheck(typeof tex === 'string' && tex.length > 0, '题面应能转成 LaTeX: ' + q.question);
+            const texAnswer = arithSafe(() => arithLoad.engine.toLatexText(q.answer), 'THROW');
+            mathCheck(typeof texAnswer === 'string' && texAnswer.length > 0, '答案应能转成 LaTeX: ' + q.answer);
+        }
+    }
+    mathCheck(Object.keys(arithSeen).length > 12, '四档应能出出多样的题，实际去重后 '
+        + Object.keys(arithSeen).length + ' 道');
+
+    // 判题的错误分支：半截输入 / 乱码应是 error（不当作错题），空串不该判 correct
+    ['3/', '-', '1..', '*3'].forEach(bad => {
+        const r = arithEvalRaw(bad, '5');
+        mathCheck(r.status === 'error', '半截输入「' + bad + '」应判 error，实际 ' + r.status);
+        mathCheck(typeof r.msg === 'string' && r.msg.length > 0, 'error 应带可读的 msg: ' + bad);
+    });
+    mathCheck(arithEvalRaw('', '5').status !== 'correct', '空输入不应判 correct');
+    mathCheck(arithEvalRaw('6', '5').status === 'wrong', '写错的数应判 wrong');
+    // 分数题：3/4 与 0.75 等价写法都要判对
+    const eqFrac = arithEvalRaw('3/4', '3/4');
+    mathCheck(eqFrac.status === 'correct', '答案 3/4 原样提交应判 correct，实际 ' + eqFrac.status);
+    const eqDec = arithEvalRaw('0.75', '3/4');
+    mathCheck(eqDec.status === 'correct', '答案 3/4 的小数写法 0.75 应判 correct，实际 ' + eqDec.status);
+    const eqNeg = arithEvalRaw('-5', '-5');
+    mathCheck(eqNeg.status === 'correct', '负数答案 -5 应判 correct，实际 ' + eqNeg.status);
+}
 // ---------- 汇总 ----------
 console.log('=== 交互冒烟 ===');
 if (process.env.UI_SMOKE_STATS) console.log('  共执行 ' + checksRun + ' 条断言');

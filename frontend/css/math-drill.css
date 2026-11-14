@@ -1,0 +1,118 @@
+/* frontend/css/math-drill.css —— 口算训练页（math.html）专用样式
+   页面结构在 math.html，交互在 js/math-drill-page.js。
+   practice.css 负责通用外观（.display-board / .key / 面板 / 变量），这里只补口算页独有的东西：
+     · 软键盘的跨列布局（提交键占 4 列、退格占 1 列、看解析靠右）
+     · 「小数」标签 .tag-decimal
+     · 档位说明小字 .level-desc、填空规则小字 .answer-note
+   颜色一律走 practice.css 里的变量（:root 白天 / html[data-theme="dark"] 夜间），不要写死色值。
+   practice.css 是三个练习页共用的，本页要改什么一律写在这里，不要去改它。 */
+
+/* ============================ 档位说明 ============================ */
+/* #level-tabs 下面的一行小字：随难度切换说明这一档练什么 */
+.level-desc {
+    margin: -4px 0 0;
+    text-align: center;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--text-faint);
+}
+
+/* ============================ 分数 / 小数标签 ============================ */
+/* 「分数」标签复用 practice.css 的 .tag.tag-fraction；小数题单独一个配色：
+   分数是「紫色=分式」，小数用青色，两枚标签同时出现在 #level-label 里也分得清 */
+.tag-decimal {
+    background: var(--decimal-tag-bg);
+    color: var(--decimal-tag-text);
+}
+
+/* 标签配色跟着主题走：白天浅青底深青字，夜间深青底浅青字 */
+:root {
+    --decimal-tag-bg: #ECFEFF;
+    --decimal-tag-text: #0E7490;
+}
+
+html[data-theme="dark"] {
+    --decimal-tag-bg: #16323C;
+    --decimal-tag-text: #7DD3FC;
+}
+
+/* ============================ 填空规则 ============================ */
+/* 题目下面那行小字：什么写法都算对（分数 3/4、小数 0.75、负数 -5），
+   放在输入区下方，学生写错了先看一眼就能改 */
+.answer-note {
+    margin-top: 8px;
+    font-size: 0.76rem;
+    line-height: 1.5;
+    color: var(--placeholder);
+}
+
+/* ============================ 软键盘布局 ============================ */
+/* 基础 5 列网格由 practice.css 的 .keyboard 提供，这里只调本页的跨列：
+   第四排「0 ) 清空 提示 看解析」各占 1 列；第五排「退格」1 列 +「提交答案」4 列。
+   动作键文字比数字长，跨列后字号收一点，免得「看解析」三个字贴边 */
+#keyboard .key.action {
+    font-size: 0.85rem;
+}
+
+/* 看解析是「放弃本题」的入口，跟提示分开一点：不跨列，只把色条压暗（内联 color 已设为红色） */
+#keyboard .key.action[data-action="giveup"] {
+    font-weight: 600;
+}
+
+/* 退格：第五排左起第 1 列 */
+#keyboard .key.action[data-action="backspace"] {
+    grid-column: span 1;
+}
+
+/* 提交答案：第五排剩下的 4 列（.key.submit 在 practice.css 里已有主色底） */
+#keyboard .key.submit {
+    grid-column: span 4;
+    font-size: 1rem;
+    font-weight: bold;
+}
+
+/* ============================ 步骤说明 ============================ */
+/* 分步解析里每步下面那行「为什么」：通分取最小公倍数、用分配律凑整……
+   引擎的 buildSteps 会在步上带 detail / detailTex，页面有才渲染，没有就整行不出现。
+   .step-row 在 practice.css 里是 flex 行，所以说明行用 flex-basis:100% 强制换到下一行
+   （.has-detail 是页面给这一行加的 class，用来打开 flex-wrap），
+   左边与 .step-body 对齐（让开 .step-title 的 6.4em），字号比正文小一档。
+   颜色用 --text-faint：夜间模式由同一套变量自动跟随，不用另写深色规则 */
+.step-row.has-detail {
+    flex-wrap: wrap;
+}
+.step-row .step-detail {
+    flex: 0 0 100%;
+    margin: 2px 0 4px;
+    padding-left: calc(6.4em + 8px);
+    font-size: 0.74rem;
+    line-height: 1.6;
+    color: var(--text-faint);
+}
+
+/* 对照行（学生自己的答案）下面不跟说明，避开左边距错位 */
+.step-row.step-mine .step-detail {
+    padding-left: 0;
+}
+
+/* ============================ 窄屏 ============================ */
+/* 手机上一行放 5 个键时动作键会被挤掉字，这里把按键高度收一点、动作键字号再小一档 */
+@media (max-width: 480px) {
+    #keyboard .key {
+        padding: 13px 0;
+        font-size: 1.1rem;
+    }
+
+    #keyboard .key.action {
+        font-size: 0.78rem;
+    }
+
+    #keyboard .key.submit {
+        font-size: 0.92rem;
+    }
+
+    /* 窄屏上 .step-title 与正文挤在一行会换行，说明行不再让左边距，直接顶格 */
+    .step-row .step-detail {
+        padding-left: 0;
+    }
+}

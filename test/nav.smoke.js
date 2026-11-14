@@ -78,9 +78,10 @@ function makeWindow(o) {
     const logout = add('button', 'logout');
     const backdrop = add('div', 'app-nav-backdrop', 'app-nav-backdrop');
 
-    // 三个导航链接（与页面 HTML 一致：练习页没有 aria-current 由脚本补）
+    // 四个导航链接（与页面 HTML 一致：练习页没有 aria-current 由脚本补）
     const links = [];
-    [['simplify', 'practice.html', false], ['equation', 'equations.html', false], ['board', 'teacher.html', true]]
+    [['simplify', 'practice.html', false], ['equation', 'equations.html', false],
+        ['arithmetic', 'math.html', false], ['board', 'teacher.html', true]]
         .forEach(([key, href, hidden]) => {
             const a = add('a', key === 'board' ? 'nav-board' : '', 'app-nav-link');
             a.dataset.nav = key;
@@ -95,7 +96,7 @@ function makeWindow(o) {
             a.textContent = (key === 'board' ? '看板' : '');
             links.push(a);
         });
-    nav.children = [toggle, groupBtn, group, links[0], links[1], links[2], who, logout];
+    nav.children = [toggle, groupBtn, group, links[0], links[1], links[2], links[3], who, logout];
 
     const document = {
         body,
@@ -250,13 +251,23 @@ check(/\[hidden\][\s\S]{0,40}display:\s*none\s*!important/.test(css), 'CSS 给 [
         load(s);
         check(s.links[1].getAttribute('aria-current') === 'page', '方程页高亮方程入口');
         check(s.links[0].getAttribute('aria-current') === null, '方程页不高亮整式化简');
-        check(s.links[2].getAttribute('aria-current') === null, '方程页不高亮看板');
+        check(s.links[2].getAttribute('aria-current') === null, '方程页不高亮口算训练');
+        check(s.links[3].getAttribute('aria-current') === null, '方程页不高亮看板');
+    }
+    {
+        const s = makeWindow({ page: 'math.html' });
+        load(s);
+        check(s.links[2].getAttribute('aria-current') === 'page', '口算页高亮口算训练入口');
+        check(s.links[0].getAttribute('aria-current') === null, '口算页不高亮整式化简');
+        check(s.links[1].getAttribute('aria-current') === null, '口算页不高亮方程入口');
+        check(s.links[3].getAttribute('aria-current') === null, '口算页不高亮看板');
     }
     {
         const s = makeWindow({ page: 'teacher.html' });
         load(s);
-        check(s.links[2].getAttribute('aria-current') === 'page', '看板页高亮看板入口');
+        check(s.links[3].getAttribute('aria-current') === 'page', '看板页高亮看板入口');
         check(s.links[0].getAttribute('aria-current') === null, '看板页不高亮练习入口');
+        check(s.links[2].getAttribute('aria-current') === null, '看板页不高亮口算训练');
     }
     {
         const s = makeWindow({ page: 'practice.html' });
@@ -283,7 +294,7 @@ check(/\[hidden\][\s\S]{0,40}display:\s*none\s*!important/.test(css), 'CSS 给 [
         s.groupBtn.fire('click');
         check(s.sub.hidden === false, '访客：点分组标题也不响应');
         check(s.fetchCalls.length === 0, '访客：不去请求 /api/auth/me');
-        check(s.links[2].hidden === true, '访客：看板入口保持隐藏');
+        check(s.links[3].hidden === true, '访客：看板入口保持隐藏');
     }
 
     // ---------- 7. 登录态 ----------
@@ -298,9 +309,9 @@ check(/\[hidden\][\s\S]{0,40}display:\s*none\s*!important/.test(css), 'CSS 给 [
         await s.flush();
         check(s.fetchCalls.length === 1 && s.fetchCalls[0] === '/api/auth/me', '登录态请求一次 /api/auth/me');
         check(s.who.textContent === '学生 · 小明 · 邀请码 ABC123', '登录态：#who 显示「学生 · 小明 · 邀请码 ABC123」');
-        check(s.links[2].hidden === false, '学生也能看到看板入口（看自己的记录）');
-        check(s.links[2].children[1].textContent === '我的看板', '学生看到的看板入口叫「我的看板」');
-        check(s.links[2].getAttribute('title').indexOf('我自己') > 0, '学生看板入口的提示说「我自己」');
+        check(s.links[3].hidden === false, '学生也能看到看板入口（看自己的记录）');
+        check(s.links[3].children[1].textContent === '我的看板', '学生看到的看板入口叫「我的看板」');
+        check(s.links[3].getAttribute('title').indexOf('我自己') > 0, '学生看板入口的提示说「我自己」');
         check(s.logout.hidden === false, '登录态显示退出按钮');
     }
     {
@@ -308,9 +319,9 @@ check(/\[hidden\][\s\S]{0,40}display:\s*none\s*!important/.test(css), 'CSS 给 [
         load(s);
         await s.flush();
         check(s.who.textContent === '老师 · 王老师 · 邀请码 TCH555', '老师：#who 显示「老师 · 王老师 · 邀请码 TCH555」');
-        check(s.links[2].children[1].textContent === '看板', '老师的看板入口叫「看板」');
-        check(s.links[2].hidden === false, '老师能看到看板入口');
-        check(s.links[2].getAttribute('aria-current') === 'page', '看板页高亮不被登录逻辑冲掉');
+        check(s.links[3].children[1].textContent === '看板', '老师的看板入口叫「看板」');
+        check(s.links[3].hidden === false, '老师能看到看板入口');
+        check(s.links[3].getAttribute('aria-current') === 'page', '看板页高亮不被登录逻辑冲掉');
     }
     {
         // 账号区已被页面脚本写过：不被导航脚本覆盖
@@ -324,7 +335,7 @@ check(/\[hidden\][\s\S]{0,40}display:\s*none\s*!important/.test(css), 'CSS 给 [
         const s = makeWindow({ page: 'practice.html', me: { ok: false, status: 401, json: async () => ({}) } });
         load(s);
         await s.flush();
-        check(s.links[2].hidden === true, '接口 401 时看板入口保持隐藏');
+        check(s.links[3].hidden === true, '接口 401 时看板入口保持隐藏');
         check(s.who.textContent === '未登录', '接口 401 时按访客处理');
     }
     {

@@ -10,9 +10,10 @@ const router = express.Router();
 // partial 是旧客户端/旧版本用的，写入时统一归到 unmerged，避免老页面缓存上报被拒。
 const RESULTS = ['correct', 'wrong', 'parentheses', 'unmerged', 'error'];
 const LEGACY_RESULTS = { partial: 'unmerged' };
-const TAGS = ['fraction'];
-// 题型：整式化简 / 一元一次方程。旧客户端不带 topic，写入时存 null，统计里按化简算。
-const TOPICS = ['simplify', 'equation'];
+const TAGS = ['fraction', 'decimal'];
+// 题型：整式化简 / 一元一次方程 / 口算训练。旧客户端不带 topic，写入时存 null，统计里按化简算。
+// 'decimal' 只给口算题里的小数题打标记，目前只做透传（不单开计数口径）。
+const TOPICS = ['simplify', 'equation', 'arithmetic'];
 const MAX_MS = 6 * 60 * 60 * 1000;
 
 function normalizeResult(value) {

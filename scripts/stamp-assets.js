@@ -21,7 +21,7 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
-const PAGES = ['index.html', 'practice.html', 'equations.html', 'teacher.html'];
+const PAGES = ['index.html', 'practice.html', 'equations.html', 'math.html', 'teacher.html'];
 // 只处理自己维护的 css/js；vendor/（KaTeX、mathjs）是第三方固定版本，不动
 const REF = /(?<ref>(?:href|src)=")(?<url>css\/[\w.-]+\.css|js\/[\w.-]+\.js)(?:\?v=[\w.-]+)?(?=")/g;
 
