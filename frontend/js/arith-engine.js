@@ -91,6 +91,39 @@
         // 「分母不太大」：结果化成最简后分母 <= 12，学生才口算得出来
         function niceDen(f) { return Number(f.d) <= 12; }
 
+        // 小数题按小数的样子显示答案：1.4 * 3 的值是 21/5，学生写 4.2 才是他算出来的东西。
+        // 只有「题面里全是小数/整数、且值能被 ≤3 位小数精确写出」才转，
+        // 像 1/3 这种写不尽的仍显示分数——否则就把一个准确的答案拆成了近似值。
+        // 返回 null 表示不转（调用方继续用原来的分数写法）
+        function decimalAnswerText(str) {
+            if (!hasDecimalToken(str)) return null;
+            let text;
+            try {
+                text = R.toPlain(evalExpr(str));
+            } catch (err) {
+                return null;
+            }
+            const m = /^(-?)(\d+)(?:\/(\d+))?$/.exec(text);
+            if (!m) return null;
+            let n = BigInt(m[2]);
+            let d = m[3] ? BigInt(m[3]) : 1n;
+            if (d === 1n) return text; // 整数答案本来就是整数，不用改
+            // d 去掉 2、5 因子后还剩 1，这个分数才能写成有限小数
+            let rest = d;
+            let twos = 0;
+            let fives = 0;
+            while (rest % 2n === 0n) { rest /= 2n; twos++; }
+            while (rest % 5n === 0n) { rest /= 5n; fives++; }
+            if (rest !== 1n) return null;
+            const places = Math.max(twos, fives);
+            if (places > 3) return null;
+            const digits = String(n * BigInt(Math.pow(10, places)) / d);
+            const padded = digits.padStart(places + 1, '0');
+            const whole = padded.slice(0, padded.length - places);
+            const tail = padded.slice(padded.length - places);
+            return (m[1] ? '-' : '') + whole + '.' + tail;
+        }
+
         // 分数作为加数时要已经是最简分数（不能出现 6/8、8/12）
         function isReduced(n, d) { return d === 1 || gcd(Math.abs(n), d) === 1; }
 
@@ -825,10 +858,14 @@
                 if (!raw || !raw.question || !raw.answer) continue;
                 const question = raw.question.replace(/\s+/g, ' ').trim();
                 if (!validQuestion(lv, question, raw.answer)) continue;
+                const answer = R.toPlain(raw.answer);
                 return {
                     level: lv,
                     question,
-                    answer: R.toPlain(raw.answer),
+                    // answer / answerDisplay 的值完全相同，只是写法不同：
+                    // 判题、上报、测试一律用 answer；页面给人看的时候用 answerDisplay
+                    answer,
+                    answerDisplay: decimalAnswerText(question) || answer,
                     tags: tagsOf(question),
                     kind: raw.kind,
                     ops: opsOf(question)
@@ -1095,7 +1132,10 @@
                 return {
                     title: '先算括号里的',
                     detail: `括号里算出来是 ${prev}`,
-                    detailTex: ''
+                    // 括号里是分数时给一份 tex：纯文本行的 19/12 在手机上只能显示成斜杠写法，
+                    // 和上面的公式不是一套排法（详情行会优先用 detailTex）。
+                    // 注意 target.v 指向的是括号内部的节点，分数里裹括号时这里拿不到，所以看 prev 的写法
+                    detailTex: prev.indexOf('/') >= 0 ? `= ${plainToTex(prev)}` : ''
                 };
             }
             if (target.k === 'op' && (target.op === '*' || target.op === '/')) {
@@ -1194,7 +1234,8 @@
                     expr: `${a} * (${b} + ${c})`,
                     tex: `${a} \\times \\left(${b} + ${c}\\right)`,
                     detail: `${a} * ${b} + ${a} * ${c} = ${a} * (${b} + ${c}) = ${a} * ${sum}，两个乘法都有因数 ${a}，先加起来再乘。`,
-                    detailTex: null
+                    // 「为什么」那行也用公式排：纯文本里的 `*` 与 `^2` 与上面的公式不是一套写法
+                    detailTex: `${a} \\times ${b} + ${a} \\times ${c} = ${a} \\times \\left(${b} + ${c}\\right) = ${a} \\times ${sum}`
                 });
                 return steps;
             }
@@ -1210,7 +1251,7 @@
                     expr: `${a} * (${b} - ${c})`,
                     tex: `${a} \\times \\left(${b} - ${c}\\right)`,
                     detail: `${a} * ${b} - ${a} * ${c} = ${a} * (${b} - ${c}) = ${a} * ${diff}，两个乘法都有因数 ${a}，先减再乘。`,
-                    detailTex: null
+                    detailTex: `${a} \\times ${b} - ${a} \\times ${c} = ${a} \\times \\left(${b} - ${c}\\right) = ${a} \\times ${diff}`
                 });
                 return steps;
             }
@@ -1237,7 +1278,7 @@
                     expr: `${m[1]} * ${sum}`,
                     tex: `${m[1]} \\times ${sum}`,
                     detail: `${m[2]} + ${m[3]} = ${sum} 正好是整十数，先算括号再乘，比硬乘快。`,
-                    detailTex: null
+                    detailTex: `${m[2]} + ${m[3]} = ${sum}`
                 });
                 return steps;
             }
@@ -1254,7 +1295,7 @@
                         expr: `${a} * ${target}`,
                         tex: `${a} \\times ${target}`,
                         detail: `${a} * ${b} ${m[3]} ${a} = ${a} * ${b} ${m[3]} ${a} * 1 = ${a} * (${b} ${m[3]} 1) = ${a} * ${target}，把单独的 ${a} 看成 ${a} * 1，凑成整十数再乘。`,
-                        detailTex: null
+                        detailTex: `${a} \\times ${b} ${m[3]} ${a} = ${a} \\times ${b} ${m[3]} ${a} \\times 1 = ${a} \\times \\left(${b} ${m[3]} 1\\right) = ${a} \\times ${target}`
                     });
                     return steps;
                 }
@@ -1268,7 +1309,7 @@
                     expr: `${sum} * ${m[3]}`,
                     tex: `${sum} \\times ${m[3]}`,
                     detail: `${m[1]} + ${m[2]} = ${sum} 正好是整十数，先算括号再乘，比硬乘快。`,
-                    detailTex: null
+                    detailTex: `${m[1]} + ${m[2]} = ${sum}`
                 });
                 return steps;
             }
@@ -1282,7 +1323,7 @@
                     expr: `${A * A} - ${B * B}`,
                     tex: `${A}^{2} - ${B}^{2}`,
                     detail: `(${A} + ${B}) * (${A} - ${B}) = ${A}^2 - ${B}^2 = ${A * A} - ${B * B}，平方差公式。`,
-                    detailTex: null
+                    detailTex: `\\left(${A} + ${B}\\right) \\times \\left(${A} - ${B}\\right) = ${A}^{2} - ${B}^{2} = ${A * A} - ${B * B}`
                 });
                 return steps;
             }
@@ -1296,7 +1337,7 @@
                     expr: `(${A} + ${B}) * (${A} - ${B})`,
                     tex: `\\left(${A} + ${B}\\right) \\times \\left(${A} - ${B}\\right)`,
                     detail: `${A}^2 - ${B}^2 = (${A} + ${B}) * (${A} - ${B}) = ${A + B} * ${A - B}，平方差公式，省去算两个大平方。`,
-                    detailTex: null
+                    detailTex: `${A}^{2} - ${B}^{2} = \\left(${A} + ${B}\\right) \\times \\left(${A} - ${B}\\right) = ${A + B} \\times ${A - B}`
                 });
                 return steps;
             }

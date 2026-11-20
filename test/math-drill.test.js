@@ -310,6 +310,66 @@ ok(R.toPlain(E.valueOfExpr('2*(-3)')) === '-6', '负数乘法应正确');
 ok(R.toPlain(E.valueOfExpr('(-2)^3')) === '-8', '负数立方应正确');
 ok(R.toPlain(E.valueOfExpr('12 - (-5)')) === '17', '减去负数应正确');
 
+// ---------- 7. 小数题按小数的样子显示答案（answerDisplay） ----------
+// ③ 档有大量「1.4 * 3 + 15」这种题，值存成 96/5 会让「看解析」把学生的 19.2
+// 显示成 96/5 —— 题面是小数、标准答案却是分数，等于在说"你写的不是标准答案的样子"。
+// 约定：answer 是判题用的，answerDisplay 只是给人看的写法，两者必须等值。
+const sameValue = (a, b) => {
+    const x = E.valueOfExpr(a);
+    const y = E.valueOfExpr(b);
+    return !!x && !!y && x.s === y.s && x.n === y.n && x.d === y.d;
+};
+let decSample = 0;
+let decChecked = 0;
+for (let i = 0; i < 400; i++) {
+    const q = E.generateQuestion(3);
+    ok(typeof q.answerDisplay === 'string' && q.answerDisplay !== '',
+        'L3 每题都应有 answerDisplay: ' + q.question);
+    ok(sameValue(q.answerDisplay, q.answer),
+        'answerDisplay 必须与 answer 等值: ' + q.question + ' 的 ' + q.answer + ' vs ' + q.answerDisplay);
+    if (!/\d\.\d/.test(q.question)) continue;
+    decChecked++;
+    const swapped = E.evaluateAnswer(q.answerDisplay, q.answer);
+    ok(swapped && swapped.status === 'correct', '把显示出来的答案填进去应判对: ' + q.question + ' => ' + q.answerDisplay);
+    // 有限小数（分母只含 2、5 因子）必须写成分数以外的小数形式
+    const m = /^-?(\d+)\/(\d+)$/.exec(q.answer);
+    if (m) {
+        let d = Number(m[2]);
+        while (d % 2 === 0) d /= 2;
+        while (d % 5 === 0) d /= 5;
+        if (d === 1 && Number(m[2]) <= 1000) {
+            decSample++;
+            ok(/^-?\d+(\.\d+)?$/.test(q.answerDisplay),
+                '小数题的答案应显示成小数而不是 ' + q.answer + ': ' + q.question + ' => ' + q.answerDisplay);
+        }
+    }
+}
+ok(decChecked > 40, 'L3 应能抽到足够多的小数题，实际 ' + decChecked);
+ok(decSample > 20, 'L3 应能抽到足够多「答案可写成有限小数」的题，实际 ' + decSample);
+// 小数题的值写不尽的（如 1/3 这种混进来的）不能硬转成近似小数
+ok(!/\/0$/.test(E.generateQuestion(3).answerDisplay), 'answerDisplay 不应出现分母 0');
+
+// ---------- 8. 讲解行的 tex 覆盖（解析面板版式回归） ----------
+// 步骤下面的「为什么这么算」（step.detail）是纯文本，手机上只能看到 41^2、3/4 这种
+// 斜杠写法，和它上面的公式不是一套排法。凡是 detail 里含 ^ 或分数的步骤，
+// 引擎必须同时给 detailTex，页面才会用公式排（见 frontend/js/math-drill-page.js）。
+let detailTotal = 0;
+let detailWithTex = 0;
+let missed = null;
+for (let i = 0; i < 400; i++) {
+    const q = E.generateQuestion(4);
+    E.buildSteps(q.question, q.answer).forEach((s) => {
+        if (!s.detail) return;
+        detailTotal++;
+        const needsTex = s.detail.indexOf('^') >= 0 || /(?:^|[^\d])\d+\/\d+/.test(s.detail);
+        if (s.detailTex) detailWithTex++;
+        else if (needsTex && !missed) missed = s.title + ' :: ' + s.detail;
+    });
+}
+ok(detailTotal > 100, '④ 档应能抽到足够多的讲解行，实际 ' + detailTotal);
+ok(detailWithTex > 100, '④ 档讲解行多数应带 detailTex，实际 ' + detailWithTex + ' / ' + detailTotal);
+ok(!missed, '讲解行里出现 ^ 或分数时必须同时给 detailTex（否则手机上只能用斜杠写法）: ' + missed);
+
 // ---------- 汇总 ----------
 const total = pass + fails.length;
 if (fails.length) {

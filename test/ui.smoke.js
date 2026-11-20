@@ -2415,3 +2415,87 @@ const window = { onload: null };
     check(!isNaN(lower) && lower >= 44,
         '.key 的 min-height 下限应 ≥44px（手机上仍要够大、点得准）：' + mhDecl.trim());
 })();
+
+// ---------- 解析面板（完整过程）的窄屏版式 ----------
+// 手机上「标题 6.4em + 公式」并排会把面板顶出横向滚动：桌面浏览器画细滚动条，
+// 三星等内嵌浏览器画的是右缘一排 ▲ ─ ▼ 三角钮，一眼看过去像版式坏了（2026-11 的反馈）。
+// 系统滚动条没法用 CSS 藏，只能保证不溢出 + 窄屏上下堆叠。这里守三件事：
+//   .step-body 不许出现 scroll/auto、必须有 min-width:0；窄屏步骤行必须改成块级；公式字号要跟着正文走。
+(function assertStepsPanelLayout() {
+    const cssLabel = 'frontend/css/math-drill.css';
+    const stripCssComments = (src) => String(src).replace(/\/\*[\s\S]*?\*\//g, '');
+    const squash = (s) => String(s).replace(/\s+/g, ' ').trim();
+
+    let raw = null;
+    try {
+        raw = fs.readFileSync(path.join(root, 'frontend', 'css', 'math-drill.css'), 'utf8');
+    } catch (e) {
+        check(false, '读不到 ' + cssLabel + '：' + e.message);
+        return;
+    }
+    const css = stripCssComments(raw);
+
+    // 顶层规则（选择器 { 声明 }）。@media 的正文单独再扫一遍，不做嵌套解析
+    const declsOf = (src, selector) => {
+        const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const out = [];
+        const re = new RegExp('(?:^|\\}|,)\\s*' + esc + '\\s*\\{([^}]*)\\}', 'g');
+        let m;
+        while ((m = re.exec(src))) out.push(m[1]);
+        return out;
+    };
+    const propOf = (block, prop) => {
+        const m = String(block).match(new RegExp('(?:^|;|\\{)\\s*' + prop + '\\s*:\\s*([^;}]+)'));
+        return m ? m[1].trim() : null;
+    };
+
+    // 1) 正文列不许横向滚动，且要能收缩（flex 子项默认 min-width:auto 会被内容顶宽）
+    const bodyBlocks = declsOf(css, '.steps-panel .step-body');
+    check(bodyBlocks.length > 0, cssLabel + ' 应有 .steps-panel .step-body 规则（解析面板正文列）');
+    const bodyAll = bodyBlocks.join(';');
+    const ox = propOf(bodyAll, 'overflow-x');
+    check(!!ox && !/^(auto|scroll)$/.test(ox),
+        '.steps-panel .step-body 的 overflow-x 不能是 auto/scroll —— 溢出时手机浏览器会画出 ▲ ▼ 的滚动条钮：' + ox);
+    check(propOf(bodyAll, 'min-width') === '0',
+        '.steps-panel .step-body 应写 min-width: 0，否则内容会把 flex 行顶出容器宽度');
+
+    // 2) 步骤里的公式跟正文一个字号（KaTeX 默认 16px，正文才 0.85rem）
+    const katexBlocks = declsOf(css, '.steps-panel .step-body .katex');
+    const katexSize = katexBlocks.length ? propOf(katexBlocks[0], 'font-size') : null;
+    check(!!katexSize && /em$/.test(String(katexSize).trim()),
+        '.steps-panel .step-body .katex 应用 em 字号（跟着正文缩放），实际：' + katexSize);
+
+    // 3) 窄屏媒体查询里步骤行要改成块级堆叠
+    const mediaAll = [...css.matchAll(/@media\s*\(max-width\s*:\s*(\d+)px\)\s*\{([\s\S]*?)\n\}/g)]
+        .map(m => ({ max: Number(m[1]), body: m[2] }));
+    const narrow = mediaAll.filter(b => b.max >= 600 && b.max <= 900);
+    check(narrow.length > 0, cssLabel + ' 应有 max-width 600~900px 的窄屏媒体查询，把步骤行改成上下堆叠');
+    if (narrow.length) {
+        const rows = declsOf(narrow[0].body, '.steps-panel .step-row');
+        check(rows.length > 0 && propOf(rows.join(';'), 'display') === 'block',
+            '窄屏里 .steps-panel .step-row 应是 display: block（标题独占一行），实际：' +
+            (rows.length ? squash(rows.join(';')) : '没有这条规则'));
+        const titles = declsOf(narrow[0].body, '.steps-panel .step-title');
+        check(titles.length > 0 && propOf(titles.join(';'), 'display') === 'block',
+            '窄屏里 .steps-panel .step-title 应是 display: block');
+        const details = declsOf(narrow[0].body, '.steps-panel .step-row .step-detail');
+        check(details.length > 0 && /^0(px)?$/.test(String(propOf(details.join(';'), 'padding-left') || '').trim()),
+            '窄屏里说明行不再为标题列让出左边距（padding-left: 0）');
+    }
+
+    // 4) 说明行在桌面端与正文列顶对齐（baseline 会让它飘到行中间、离上一步行很远）
+    const hd = declsOf(css, '.steps-panel .step-row.has-detail');
+    check(hd.length > 0 && /flex-start/.test(String(propOf(hd.join(';'), 'align-items') || '')),
+        '.steps-panel .step-row.has-detail 应 align-items: flex-start');
+
+    // 5) 面板样式不许原地改回 practice.css（三页共用，改那里会连带桌面版式）
+    let practiceRaw = '';
+    try {
+        practiceRaw = fs.readFileSync(path.join(root, 'frontend', 'css', 'practice.css'), 'utf8');
+    } catch (e) { /* 上一节已报过错 */ }
+    if (practiceRaw) {
+        const pb = declsOf(stripCssComments(practiceRaw), '.step-body');
+        check(pb.length > 0 && /auto|scroll/.test(String(propOf(pb.join(';'), 'overflow-x') || '')),
+            'practice.css 的 .step-body 仍应保持原样（overflow-x: auto），口算页的重排写在 math-drill.css 里');
+    }
+})();

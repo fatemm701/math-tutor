@@ -95,6 +95,92 @@ html[data-theme="dark"] {
     padding-left: 0;
 }
 
+/* 说明行由「公式 + 一句人话」两段拼成：公式和人话各自是一整块，
+   长公式排不下时整块换行，不会把人话从公式中间劈成两半 */
+.step-detail .step-detail-math {
+    display: inline-block;
+    max-width: 100%;
+}
+.step-detail .step-detail-words {
+    display: inline-block;
+    margin-left: 0.35em;
+    font-size: 0.96em;
+}
+
+/* ============================ 解析面板版式 ============================ */
+/* 手机上「完整过程」原本是「标题 6.4em + 公式」并排，一行放不下就横向溢出；
+   桌面浏览器会画一条细滚动条，而三星/部分安卓内嵌浏览器画的是右缘一排
+   ▲ ─ ▼ 三角钮（灰色方块），家长第一眼就会觉得"版式坏了"。
+   手机上系统滚动条没法用 CSS 藏，只能从根上不溢出，做法有三条：
+     1) 步骤里的公式跟正文一个字号（KaTeX 默认 16px，正文才 0.85rem）；
+     2) .step-body 不再横向滚（overflow-x: clip 不产生滚动容器）；
+     3) 窄屏把标题和公式改成上下两行，标题不再被挤成两行、中间也不再留空洞。 */
+.steps-panel .step-body {
+    min-width: 0;
+    overflow-x: clip;
+    overflow-wrap: anywhere;
+}
+
+/* 公式跟着正文走：不设的话 KaTeX 按文档默认 16px 排，比四周文字大一圈 */
+.steps-panel .step-body .katex {
+    font-size: 0.92em;
+}
+
+.steps-panel .step-detail .katex {
+    font-size: 1em;
+}
+
+/* 桌面端：说明行与正文列左对齐即可，不要用 baseline 让它飘到行中间 */
+.steps-panel .step-row.has-detail {
+    align-items: flex-start;
+}
+
+/* 说明行要跨整行：flex 容器里它默认按内容宽度（auto）从左边排，
+   于是「让开标题列」的 padding-left 之后右边缘会顶出面板 ——
+   桌面端 .steps-panel 不是 flex 容器时看不出来，是 display:flex 的父级才暴露 */
+.steps-panel .step-row .step-detail {
+    flex: 0 0 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+/* 窄屏（平板竖屏、手机）：标题独占一行，公式顶格，说明紧跟其后 */
+@media (max-width: 640px) {
+    .steps-panel .step-row {
+        display: block;
+        padding: 6px 0;
+    }
+
+    .steps-panel .step-title {
+        display: block;
+        margin-bottom: 2px;
+    }
+
+    .steps-panel .step-body {
+        display: block;
+        padding-left: 0;
+    }
+
+    .steps-panel .step-row .step-detail {
+        display: block;
+        flex: none;
+        margin: 4px 0 0;
+        padding-left: 0;
+    }
+
+    /* 对照行本来就是「另一个人的答案」，下面加条虚线分隔才不至于和步骤 1 混在一起 */
+    .steps-panel .step-row.step-mine {
+        margin-bottom: 4px;
+        padding-bottom: 8px;
+    }
+
+    /* 步骤行内不再用大号列式分数：行内样式高度小、也不会把整行撑宽 */
+    .steps-panel .step-body .katex-display {
+        display: inline-block;
+        text-align: left;
+    }
+}
+
 /* ============================ 窄屏 ============================ */
 /* 手机上一行放 5 个键时动作键会被挤掉字，这里把按键高度收一点、动作键字号再小一档 */
 @media (max-width: 480px) {
@@ -111,7 +197,8 @@ html[data-theme="dark"] {
         font-size: 0.92rem;
     }
 
-    /* 窄屏上 .step-title 与正文挤在一行会换行，说明行不再让左边距，直接顶格 */
+    /* 窄屏上 .step-title 与正文上下堆叠（见上方「解析面板版式」一节），
+       说明行也跟着顶格，不再为标题列让出 6.4em */
     .step-row .step-detail {
         padding-left: 0;
     }

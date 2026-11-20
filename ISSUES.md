@@ -120,8 +120,58 @@ catch 后返回 `null`，`frontend/js/practice.js:33` 的 `displayLatex()` 于�
 
 ---
 
+---
+
+## 追加（2026-11-21）：口算页解析面板在手机上"版式奇怪"
+
+用户反馈的截图：**三星手机浏览器竖屏（约 464 CSS px）、夜间模式、④ 档**，展开「完整过程」后
+三处看着不对：
+
+1. 每个步骤右侧多出一竖排 **▲ ─ ▼ 三角钮**（灰白色，压在深色小方块上）；
+2. 步骤标题（「2. 先算括号里的」）被挤成两行，公式被推到很右边，标题与公式之间留出一大块空白；
+3. 讲解行（「括号里算出来是 19/12」）离它上面的步骤很远，和公式不在一条竖线上。
+
+### 根因
+
+| 现象 | 根因 | 位置 |
+|---|---|---|
+| ▲ ─ ▼ 三角钮 | `.step-body` 写了 `overflow-x: auto`，而步骤里的公式是 KaTeX 默认 **16px**、页面正文只有 `0.85rem`，每行都横向溢出。桌面 Chrome 画细滚动条，三星/部分安卓内嵌浏览器把横向滚动条画成右缘一排三角钮。手机上**没法用 CSS 隐藏系统滚动条**，只能不产生溢出 | `frontend/css/practice.css:366-370`（`math.html` 与 `equations.html` 共用） |
+| 标题折行 + 大空白 | 步骤行是 `flex`：`.step-title{flex:0 0 6.4em}` + `.step-body{flex:1}`，窄屏放不下「标题 + 公式」 | `frontend/css/practice.css:353-370` |
+| 讲解行离得远 | `.step-detail` 是 `flex:0 0 100%` 挂在 `align-items:baseline` 的行里，第二行与第一行基线对不齐 | `frontend/css/math-drill.css:74-96` |
+| 讲解行右侧顶出面板 | 桌面端 `.steps-panel` 是 flex 容器，`.step-detail` 按内容宽度排，让开标题列的 `padding-left` 之后右边缘溢出（面板 `scrollWidth` 530 vs `clientWidth` 458） | 同上 |
+
+### 改法
+
+- `frontend/css/practice.css` 一个字没动（方程页共用，风险太大），全部改在 `frontend/css/math-drill.css` 的 `.steps-panel` 作用域里：
+  - `.steps-panel .step-body { min-width: 0; overflow-x: clip; overflow-wrap: anywhere; }` —— `clip` 不产生滚动容器，从根上消掉滚动条；
+  - `.steps-panel .step-body .katex { font-size: 0.92em; }` —— 公式跟着正文走，不再比四周大一圈；
+  - `.steps-panel .step-row.has-detail { align-items: flex-start; }`、`.step-detail { max-width: 100%; box-sizing: border-box; }` —— 对齐与不溢出；
+  - `@media (max-width: 640px)`：步骤行改成 `display: block`，标题独占一行、公式顶格、讲解紧跟其后。
+- 讲解行里的「算式」和「那句人话」拆成两段（`.step-detail-math` / `.step-detail-words`），各用 `inline-block`，长公式整块折行，不会把「平方差公式。」从公式中间劈成两半。
+- 引擎侧补齐 `detailTex`：`frontend/js/arith-engine.js` 里「用分配律 / 凑整 / 平方差」四种简算讲解原来 `detailTex: null`，只有纯文本，手机上只能显示成 `25^2 - 1^2 = …`；现在都排成公式。页面 `frontend/js/math-drill-page.js` 的 `detailTailWords()` 把 `detail` 里第一处「，」之后的中文捞回来，跟在公式后面显示。
+
+### 顺带修掉的真 bug：小数题的标准答案显示成假分数
+
+题目是小数（如 `1.4 * 3 + 15`）时，内部答案是 `96/5`，点「看解析」会把学生写的 `19.2` 顶成 `96/5` —— 题面用小数、标准答案却是分数。
+现在 `buildQuestion` 多返回一个 `answerDisplay`：题面有小数且这个值写得成有限小数（≤3 位）就显示小数，否则与原 `answer` 相同。
+`answer` 不变（判题仍按数值比，写 `19.2`、`96/5` 都算对）。抽样 6000 道 ③ 档：小数题 2246 道，其中 1586 道转成小数显示，其余是 `5.0`/`6.00` 这种整数答案（保持整数）。
+
+### 防复发
+
+- `test/math-drill.test.js` 第 8 节：讲解行里出现 `^` 或分数时**必须**同时给 `detailTex`（变异验证：把平方差那条改回 `''` → 报「讲解行里出现 ^ 或分数时必须同时给 detailTex … 11^2 - 4^2 = …」）；
+- `test/math-drill.test.js` 第 7 节（此前已有）+ 本轮补充：`answerDisplay` 与 `answer` 等值、把 `answerDisplay` 填进去判对；
+- `test/ui.smoke.js` 末尾 `assertStepsPanelLayout()`：`.steps-panel .step-body` 不能是 `overflow-x: auto/scroll` 且必须 `min-width: 0`、公式字号必须是 `em`、窄屏媒体查询里步骤行必须是 `display: block`、`practice.css` 的 `.step-body` **仍应**保持 `overflow-x: auto`（保证没顺手改坏方程页）。
+
+### 真浏览器复核（headless Chrome + CDP，390×780 / 464×900 / 1280×800）
+
+- 三视口「完整过程」面板 `scrollWidth === clientWidth`（324/324、398/398、458/458），页面无横向溢出；
+- 塞入一条「公式 + 人话」讲解行后：`noteScrollW === noteClientW`，人话可见，无右溢；
+- 窄屏每行 `display: block`、`overflow-x: clip`、公式 12.5px。
+
+**未覆盖**：真机（三星自带浏览器、系统字号放大）没法在本机复现，本次按「不产生横向溢出」从根上处理，理论上任何浏览器都不会再画滚动条；若仍有异常需要用户提供新的截图。
+
 ## 顺带发现（不在 issue 里，但同属"看起来能用、其实不对"）
 
 - `frontend/js/arith-engine.js` 的③进阶会把 `2.3 * 5 + 19` 这种小数乘法的标准答案存成
   `61/2`，弹到页面就是「61/2」，而题面是小数。判题不受影响（写了 `30.5` 也判对），
-  但"参考答案显示成假分数"本身就容易让学生以为答案是分数 —— 已记在待办里。
+  但"参考答案显示成假分数"本身就容易让学生以为答案是分数 —— **已在 2026-11-21 修掉，见上一节「顺带修掉的真 bug」**。

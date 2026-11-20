@@ -177,6 +177,20 @@
         renderMath(el, plain, false);
     }
 
+    // detail 是「算式 + 一句人话」（`11^2 - 4^2 = … = 15 * 7，平方差公式，省去算两个大平方。`），
+    // detailTex 只排了算式那一半。页面用 detailTex 排公式后，靠这里把后面的人话捞回来：
+    // 取 detail 里第一处「，」之后的内容（`平方差公式，省去算两个大平方。`）。
+    function detailTailWords(detail, detailTex) {
+        if (!detail || !detailTex) return '';
+        const at = detail.indexOf('，');
+        if (at < 0) return '';
+        const tail = detail.slice(at + 1).trim();
+        // 尾巴里不该再出现算式记号；出现了说明这条 detail 不是「算式，人话」的形状，
+        // 返回空串让调用方退回整条纯文本，宁可朴素也不要排错
+        if (/[=^*+/]/.test(tail)) return '';
+        return tail;
+    }
+
     // ==========================================
     // 1d. 夜间模式：与其它练习页共用 poly-theme 这个键，来回切换不会一边亮一边暗
     //     （math.html 的 <head> 里另有一小段脚本负责首帧前恢复主题，避免闪白）
@@ -579,6 +593,13 @@
             hintsEl.hidden = false;
         }
 
+        // 给学生看的标准答案写法：小数题用小数（1.4 * 3 显示 4.2 而不是 21/5），
+        // 其余题目 answerDisplay 就等于 answer。判题和上报一律用 answer，这里只管显示
+        function shownAnswer() {
+            if (!currentQ) return '';
+            return currentQ.answerDisplay || currentQ.answer || '';
+        }
+
         // 分步解析：每一步都与标准答案等价，最后一步就是答案
         // studentAnswer：学生自己写的数；非空且没有完全做对时，顶部多一行对照
         function showSteps(studentAnswer, studentStatus) {
@@ -631,8 +652,20 @@
                     const note = document.createElement('div');
                     note.className = 'step-detail';
                     if (detailTex && typeof katex !== 'undefined') {
+                        // 公式版的「为什么」只负责把算式排对；后面那句人话（平方差公式…）
+                        // 是纯文本，不能丢。引擎在 detailTex 后面用「，」接人话，这里顺手补回来。
+                        const katexEl = document.createElement('span');
+                        katexEl.className = 'step-detail-math';
                         try {
-                            katex.render(detailTex, note, { displayMode: false, throwOnError: false });
+                            katex.render(detailTex, katexEl, { displayMode: false, throwOnError: false });
+                            note.appendChild(katexEl);
+                            const words = detailTailWords(detail, detailTex);
+                            if (words) {
+                                const tail = document.createElement('span');
+                                tail.className = 'step-detail-words';
+                                tail.textContent = words;
+                                note.appendChild(tail);
+                            }
                         } catch (err) {
                             note.textContent = detail || '';
                         }
@@ -699,7 +732,7 @@
                 if (!confirm('查看解析将放弃本题（记为看解析），确认吗？')) return;
 
                 const beforeGiveUp = currentInput;
-                currentInput = currentQ.answer;
+                currentInput = shownAnswer();
                 renderInput();
 
                 showSteps(beforeGiveUp, 'wrong');
