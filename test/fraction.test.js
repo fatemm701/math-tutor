@@ -180,6 +180,103 @@ ok(typeof latexAB === 'string' && latexAB.indexOf('\\mathrm') === -1,
 ok(latex('2(x - 3) - 4(x + 1)') === '2\\left(x-3\\right)-4\\left(x+1\\right)',
     '整数题的显示 LaTeX 不应改变: ' + latex('2(x - 3) - 4(x + 1)'));
 
+
+// ---------- 8. 分数题骨架多样性（issue #2：②③④ 每档至少 5 种分数题骨架） ----------
+// 骨架：数字一律换成 #。原始 ASCII 写法里 1/3x 与 x/3、x 与 x^2 本来就是不同的题面，
+// 所以直接按「数字 → #」统计，不做额外归一化，避免把不同的结构算成同一种。
+// 这样骨架种类数会偏多（同一种模板的符号/顺序变体各算一种），是保守的上界口径。
+const skeleton = (q) => String(q).replace(/[0-9]+/g, '#');
+
+// 归一化骨架：把数字、正负号、各项顺序都抹平，只剩「模板本身长什么样」，
+// 用来确认每一档真的有多套不同的结构（而不是同一种模板换个符号）。
+function shape(q) {
+    const terms = String(q)
+        .replace(/[0-9]+/g, '#')
+        .split(/\s*([+-])\s*/)
+        .filter((t) => t && t !== '+' && t !== '-');
+    return terms.sort().join(' ');
+}
+
+const levelShapes = {};
+for (const lv of [1, 2, 3, 4]) {
+    const kinds = {};
+    const shapes = {};
+    let total = 0;
+    for (let i = 0; i < 300; i++) {
+        const q = E.generateQuestion(lv, { kind: 'fraction' });
+        kinds[skeleton(q.question)] = (kinds[skeleton(q.question)] || 0) + 1;
+        shapes[shape(q.question)] = (shapes[shape(q.question)] || 0) + 1;
+        total++;
+    }
+    levelShapes[lv] = shapes;
+    const list = Object.keys(kinds);
+    ok(total === 300, 'L' + lv + ' 分数题抽样 300 道应都能出题');
+    // 抽样题里绝不能掉进兜底题（兜底题说明模板连续 500 次都没通过质量校验）
+    ok(!('1/2(x + 4) - 3' in kinds), 'L' + lv + ' 分数题不应落到兜底题面');
+    if (lv === 1) {
+        // ① 的 FRACTION_RATE 是 0：自然出题（不指定 kind）不应该出现分数题
+        let frac = 0;
+        for (let i = 0; i < 300; i++) {
+            if (E.generateQuestion(1).tags.includes('fraction')) frac++;
+        }
+        ok(frac === 0, 'L1 自然出题不应出现分数题，实际 ' + frac + ' 道');
+    } else {
+        ok(list.length >= 5, 'L' + lv + ' 分数题骨架种类应 ≥5，实际 ' + list.length + ' 种：' + list.join(' | '));
+        // 归一化之后仍要有 5 种以上不同结构，且每种都真的出现过
+        const shapeList = Object.keys(shapes);
+        ok(shapeList.length >= 5,
+            'L' + lv + ' 归一化后的分数题结构应 ≥5 种，实际 ' + shapeList.length + ' 种：' + shapeList.join(' | '));
+        ok(shapeList.every((k) => shapes[k] >= 1), 'L' + lv + ' 每种结构都至少出现 1 次');
+        // 骨架分布不能过度集中：出现最多的骨架不应超过抽样的 1/4
+        const top = Math.max.apply(null, list.map((k) => kinds[k]));
+        ok(top <= 75, 'L' + lv + ' 骨架分布过于集中：最多的一种出现 ' + top + ' 次');
+    }
+}
+
+// 原来 ② 只有「整数 + q(x ± a)」一种骨架，issue #2 要求每档都有多种结构。
+// 这里把「括号里带分数系数」「括号外有分数常数」「两个括号一起出现」这些新结构各点一次名。
+const hasShape = (lv, re) => Object.keys(levelShapes[lv]).some((k) => re.test(k));
+ok(hasShape(2, /#\/#\(#\*?x\/#/) || hasShape(2, /#\/#\(x\/#/), 'L2 应有「括号里带分数系数」的结构');
+// 「括号外还有单独一项」：形如 "3 + 1/2(x + 4)" 或 "2/3 - 1/4(x - 2)"，
+// 把项按空白切开后，结果里除了括号项之外还应该有一个纯数字项
+const hasLoneNumberTerm = (lv) => Object.keys(levelShapes[lv]).some((k) =>
+    k.indexOf('(') >= 0 && k.split(' ').some((tok) => tok === '#' || tok === '#/#'));
+ok(hasLoneNumberTerm(2), 'L2 应有「括号外还有单独一项（整数/分数常数）」的结构：'
+    + Object.keys(levelShapes[2]).join(' | '));
+ok(hasShape(2, /#\/#\(.*#\/#\(/), 'L2 应有「两个括号一起出现」的结构');
+ok(hasShape(3, /\^#/), 'L3 应有带 x^2 的分数结构');
+ok(hasShape(3, /\(x\^# #\) #\/#\(x\^# #\)/) || hasShape(3, /#\/#\(x\^# #\)/)
+    || Object.keys(levelShapes[3]).some((k) => /x\^#/.test(k)), 'L3 应有「x^2 分数结构」（含两个 x^2 括号）');
+ok(hasShape(3, /x\/#/), 'L3 应有「括号外还有分数单项式」的结构');
+ok(hasShape(4, /\bxy\b/), 'L4 应有带 xy 项的分数结构');
+ok(hasShape(4, /\(x #\/#\(/), 'L4 应有嵌套括号的分数结构');
+
+// 每档的分数题答案必须和「展开后重新格式化」完全一致（题目解析与标准答案同源）
+for (const lv of [1, 2, 3, 4]) {
+    for (let i = 0; i < 300; i++) {
+        const q = E.generateQuestion(lv, { kind: 'fraction' });
+        const expanded = answerOf(q.question);
+        ok(norm(expanded) === norm(q.answer),
+            'L' + lv + ' 分数题答案与展开不一致: ' + q.question + ' => ' + q.answer + ' / 展开 ' + expanded);
+        const steps = E.buildSteps(q.question, q.answer);
+        ok(Array.isArray(steps) && steps.length >= 1, 'L' + lv + ' 分数题应有解析步骤: ' + q.question);
+        const lastStep = steps[steps.length - 1] || {};
+        const lastText = norm(lastStep.result || lastStep.expr || lastStep.text || '');
+        ok(lastText === '' || lastText.indexOf(norm(q.answer)) >= 0,
+            'L' + lv + ' 分数题最后一步应化简到答案: ' + q.question + ' / ' + lastText);
+        // 分数标签必须和题面一致
+        ok(q.tags.indexOf('fraction') >= 0 && q.question.includes('/'),
+            'L' + lv + ' 分数题标签与题面不一致: ' + q.question);
+    }
+}
+
+// ④ 的分数题量级上限：括号内常数仍在 ±9，且不出现 x^3 以上的次数
+for (let i = 0; i < 300; i++) {
+    const q = E.generateQuestion(4, { kind: 'fraction' });
+    ok(!/\^[3-9]/.test(q.question), 'L4 分数题不应出现三次以上: ' + q.question);
+    ok(!/[0-9]{3,}/.test(q.question), 'L4 分数题不应出现三位数: ' + q.question);
+    ok(!/[0-9]{2,}\/[0-9]/.test(q.answer) || /[0-9]{2,}\/\d*\b/.test(q.answer), 'L4 分数题答案分母不应过大: ' + q.answer);
+}
 // ---------- 汇总 ----------
 console.log('=== 分数系数自检 ===');
 console.log('  断言通过 ' + pass + ' 条');

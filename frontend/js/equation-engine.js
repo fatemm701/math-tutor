@@ -461,6 +461,69 @@
 
         // 4. 判题
         // ======================================================================
+        // 学生写的常量「化成最简了吗」：只看写法，不看数值。
+        // rational 一经运算就自动约分（mathjs Fraction 的 n/d 永远互质），解析出来再去比 n、d 是查不出
+        // 15/10、4/6 的，所以这里回到学生答案的原始文本上数：逐个斜杠取出紧挨着的分子和分母，
+        // 出现 a/b 且 gcd(a, b) > 1 就说明能约没约（-2/4 的负号在式子里，不影响分母的 gcd）。
+        // 分子/分母允许是括号组（(2*3)/4），只要整段只含数字就能算成一个整数参与判断；
+        // 含 x 之类算不出来的片段跳过，交给后面的数值判等兜底。
+        function hasUnreducedFraction(text) {
+            const expr = String(text || '').replace(/\s/g, '');
+            for (let i = 0; i < expr.length; i++) {
+                if (expr[i] !== '/') continue;
+                // 分子分母各取紧挨着斜杠的那一段：3/2+0/4 里的 0/4 才不会被并成 (3/2+0)/4
+                const numText = scanOperand(expr, i, -1);
+                const denText = scanOperand(expr, i, 1);
+                if (!numText || !denText) continue;
+                const num = staticValue(numText);
+                const den = staticValue(denText);
+                // 分母是 ±1 的分数等于整数、分子是 0 的分数就是 0：约不约都一样，不算没约分
+                if (num === null || den === null || den === 0 || Math.abs(den) === 1 || num === 0) continue;
+                if (gcdInt(Math.abs(num), Math.abs(den)) > 1) return true;
+            }
+            return false;
+        }
+        // 从斜杠位置往左（dir=-1）或往右（dir=1）取紧挨着的那个「原子」：
+        // 就是它自己所在的这一个分数，不把旁边的加减项卷进来（3/2+0/4 只看 0/4）。
+        function scanOperand(expr, slash, dir) {
+            let i = slash + dir;
+            if (i < 0 || i >= expr.length) return '';
+            // 符号位跟着紧邻的原子（4/-2 里的 -2），但斜杠前面的 3-2/4 不能把 3- 当成分子
+            const start = i;
+            if (expr[i] === '-' || expr[i] === '+') i += dir;
+            if (expr[i] === '(') {
+                // 括号组：找配对的那一个括号
+                let depth = 0;
+                for (; i >= 0 && i < expr.length; i += dir) {
+                    if (expr[i] === ')') depth++;
+                    else if (expr[i] === '(') { depth--; if (depth === 0) break; }
+                }
+                if (i < 0 || i >= expr.length) return '';
+                i += dir;
+            } else {
+                // 数字串（含小数点）：一直吃到不是数字为止
+                while (i >= 0 && i < expr.length && /[0-9.]/.test(expr[i])) i += dir;
+            }
+            return dir > 0 ? expr.slice(start, i) : expr.slice(i + 1, start + 1);
+        }
+        // 一段只含数字和运算符的文本能算成整数就返回它，否则返回 null（含 x、带分数之类一律跳过）
+        function staticValue(text) {
+            let v;
+            try { v = parseSide(text); } catch (e) { return null; }
+            if (!R.isZero(v.x) || v.c.d !== 1n) return null;
+            return Number(v.c.s * v.c.n);
+        }
+        function gcdInt(a, b) {
+            while (b) { const t = a % b; a = b; b = t; }
+            return a;
+        }
+        // 化到 x = 常数但常数能约分（15/10、4/6）时给出提示；已经最简返回 null
+        function unreducedNotice(studentText, goal) {
+            if (!goal || goal.d === 1n) return null;
+            if (!hasUnreducedFraction(studentText)) return null;
+            return '对，但结果没化成最简分数，请把 x 的值约到最简（如 ' + R.toPlain(goal) + '）';
+        }
+
         function evaluateAnswer(studentAnswer, standardAnswer) {
             const raw = String(studentAnswer === undefined || studentAnswer === null ? '' : studentAnswer).trim();
             if (!raw) return { status: 'error', msg: '还没有写答案呢' };
@@ -503,6 +566,9 @@
                     return { status: 'wrong', msg: '答案不对，再检查一下移项和变号' };
                 }
                 if (direct !== null && R.eq(direct, goal)) {
+                    // 数值/形式都对，但把 x 的值写成了没约分的分数（15/10）：按「没做完」处理
+                    const unreduced = unreducedNotice(compact, goal);
+                    if (unreduced) return { status: 'unmerged', msg: unreduced };
                     return { status: 'correct', msg: '完全正确！' };
                 }
             }

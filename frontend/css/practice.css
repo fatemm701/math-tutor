@@ -80,6 +80,9 @@ body {
 .container {
     width: 100%;
     max-width: 500px;
+    /* 左右内边距算进 100% 宽度里，否则窄屏下栏比 .app-main 宽出 20px，
+       键盘最后一列会被挤到主区外（issue #4 里报的「按键错位」有这一份） */
+    box-sizing: border-box;
     min-height: calc(100vh - 40px);
     display: flex;
     flex-direction: column;
@@ -87,10 +90,11 @@ body {
     gap: 15px;
 }
 
-/* 顶部：当前账号 + 夜间模式 + 退出 */
 .topbar {
     width: 100%;
     max-width: 500px;
+    /* 同理：topbar 有左右内边距，不加这一步在窄屏也会比栏宽 */
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -211,19 +215,33 @@ html[data-theme="dark"] .katex {
     color: var(--text);
 }
 
+/* 软键盘：5 列等宽。
+   列宽必须是 minmax(0, 1fr) 而不是裸 1fr —— 1fr 的最小宽度跟着内容走（auto），
+   动作键「提交答案」在窄屏或系统字号放大时会把整列一起撑宽，
+   键盘于是比容器宽、右侧的键被挤出去或压在别的键上（issue #4 的「键盘错位」）。
+   minmax(0, 1fr) 让每一列严格平分、内容再长也只在自己的格里截断；
+   .key 再用 min-width: 0 去掉默认的 min-width: auto。
+   overflow: hidden 兜底：万一某天又冒出撑宽的内容，也只是在格子里截掉，
+   不会让键盘顶出主区、把右边的键藏起来（桌面端观感不变） */
 .keyboard {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 8px;
+    overflow: hidden;
 }
 
+/* 按键：min-width: 0 允许格子在窄屏继续压缩；min-height 和字号用 clamp 跟视口一起缩，
+   窄屏 / 系统字号放大时也不会把整行挤到换行或溢出。
+   55px 是原来的实际高度（15px 上下内边距 + 1.25rem 文字），桌面端按键只会略高一点 */
 .key {
     background: var(--key-bg);
     color: var(--text);
     border: 1px solid var(--line);
     border-radius: 8px;
-    padding: 15px 0;
-    font-size: 1.25rem;
+    min-width: 0;
+    min-height: clamp(44px, 15vw, 55px);
+    padding: clamp(10px, 3.6vw, 15px) 0;
+    font-size: clamp(1rem, 1.1vw + 0.6rem, 1.25rem);
     font-weight: 500;
     text-align: center;
     cursor: pointer;
@@ -244,20 +262,52 @@ html[data-theme="dark"] .katex {
     font-weight: 600;
 }
 
+/* 动作键字号也跟视口缩：光靠 .key 的 clamp 管不到这两条更小的字号，
+   窄屏 + 系统字号放大时「提交答案」会把格子撑到比自己宽（issue #4 的错位） */
 .key.action {
     background: var(--key-action);
-    font-size: 0.9rem;
+    font-size: clamp(0.8rem, 0.78vw + 0.5rem, 0.9rem);
 }
 
 .key.submit {
     background: var(--primary);
     color: #fff;
     border: none;
-    font-size: 0.9rem;
+    font-size: clamp(0.8rem, 0.78vw + 0.5rem, 0.9rem);
+}
+
+/* 再窄的手机（≤360px）动作键只给两三个字的空间：允许在格子里折成两行，
+   宁可两行小字也不要把整列撑破 */
+.key.action,
+.key.submit {
+    overflow-wrap: break-word;
 }
 
 .key.submit:active {
     background: var(--primary-strong);
+}
+
+/* 桌面端把按键高度收回来。
+   上面 .key 的 min-height / padding 用的是 15vw、3.6vw 这类视口单位，
+   在 1280 宽的桌面上会被打成上限，按键从原来的 57px 长到 87px——
+   键盘变「胖」，一屏能看到的题面就少了。1024px 以上的屏本来就不缺横向空间，
+   这里把 min-height / 内边距 / 字号还原成原来的取值，按键高度回到 57px，
+   桌面端观感和改动前一致；窄屏和手机不受影响（那才是 issue #4 要修的场景）。
+   注意 .keyboard 是 grid 容器、.container 是 flex 列：行高会被拉伸，
+   只改 .key 的高度没用，所以还要 .keyboard 的 grid-auto-rows: auto
+   把行高交回给按键自己的 min-height。 */
+@media (min-width: 1024px) {
+    .keyboard {
+        grid-auto-rows: auto;
+    }
+
+    .key {
+        box-sizing: border-box;
+        min-height: 55px;
+        max-height: 60px;
+        padding: 15px 0;
+        font-size: 1.25rem;
+    }
 }
 
 .feedback {

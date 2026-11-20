@@ -1066,6 +1066,9 @@ if (equationCode && equationEngine) {
             eqCheck(/var\(--warn\)/.test(unmergedPage.feedback.style.color || ''),
                 'unmerged 反馈应是黄色（var(--warn)），实际: ' + unmergedPage.feedback.style.color);
             eqCheck(unmergedPage.steps.hidden === false, 'unmerged 应展开完整过程');
+            // 文案必须来自引擎（这里引擎给的是「没化系数为一」那种），页面不能自己写死
+            eqCheck(/化系数为一/.test(unmergedPage.feedback.textContent || ''),
+                'unmerged 反馈应显示引擎的「化系数为一」提示，实际: ' + unmergedPage.feedback.textContent);
             eqCheck(unmergedPage.keys.submit.textContent === '下一题', 'unmerged 后应停在本题等「下一题」');
             const umRows = unmergedPage.steps.children.filter(r => r.classList.contains('step-row'));
             const umMine = umRows[0];
@@ -1434,9 +1437,11 @@ if (!equationEngine) {
         eqCheck(eqEvalStatuses.includes(r.status) && typeof r.msg === 'string' && r.msg.length > 0,
             '残缺/非法输入 ' + JSON.stringify(stu) + ' 应返回 {status∈4 种, msg}，实际 ' + JSON.stringify(r));
     });
-    // 分数解（按数值同解判）
-    eqCheck(eqEval('x=2/4', 'x=1/2').status === 'correct',
-        'x=2/4 与 x=1/2 同解，应判 correct，实际 ' + eqEval('x=2/4', 'x=1/2').status);
+    // 分数解（按数值同解判）；但写成没约分的 2/4 属于「对，还没做完」（issue #3），不是 correct
+    const eqEvalHalf = eqEval('x=2/4', 'x=1/2');
+    eqCheck(eqEvalHalf.status === 'unmerged' && /最简|约/.test(eqEvalHalf.msg),
+        'x=2/4 与 x=1/2 同解但没约分，应判 unmerged 并提示约分，实际 ' + JSON.stringify(eqEvalHalf));
+    eqCheck(eqEval('x=1/2', 'x=1/2').status === 'correct', 'x=1/2 是最简，应判 correct');
 
     // 分步过程：最后一步恰好是答案、第一步是原方程、中间步不含 LaTeX 宏
     const eqSafe = (fn, fallback) => { try { return fn(); } catch (e) { return fallback; } };
@@ -2204,3 +2209,209 @@ else {
 })();
 
 const window = { onload: null };
+
+// ---------- issue #4：软键盘栅格 / 三页样式引用（纯文本断言，不需要浏览器） ----------
+// 背景：平板上软键盘被挤成两列/竖条、按键错位（issue #4）。
+// 真机几何（列是否等宽、每个键点不点得到）只能靠浏览器量，
+// 这里守的是「结构性」的点：谁把列定义改回裸 1fr、去掉 min-width:0、把字号写死，
+// 或者让三个练习页不再共用同一份 practice.css，断言都会失败，review 时一眼能看到。
+(function assertKeyboardCss() {
+    const cssLabel = 'frontend/css/practice.css';
+    const cssPath = path.join(root, 'frontend', 'css', 'practice.css');
+
+    // 注释里也会提 1fr / minmax（是给后来人解释用），统计前先剔掉
+    const stripCssComments = (src) => String(src).replace(/\/\*[\s\S]*?\*\//g, '');
+    const squash = (s) => String(s).replace(/\s+/g, ' ').trim();
+    // 在声明块文本里取某个属性的值
+    const propOf = (block, prop) => {
+        const m = String(block).match(new RegExp('(?:^|;|\\{)\\s*' + prop.replace(/-/g, '\\-') + '\\s*:\\s*([^;]+)'));
+        return m ? m[1].trim() : null;
+    };
+    // 取一条规则（选择器完全相等）的声明块
+    const ruleOf = (css, selector) => {
+        const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const m = String(css).match(new RegExp('(?:^|\\}|,)\\s*' + esc + '\\s*\\{([^}]*)\\}'));
+        return m ? m[1] : null;
+    };
+    // 整份样式表里出现的所有「列定义」值（grid-template-columns / grid-template）
+    const templateDecls = (css) => [...String(css).matchAll(/grid-template(?:-columns)?\s*:\s*([^;}]+)/g)].map(m => squash(m[1]));
+
+    let practiceCss = null;
+    try {
+        practiceCss = fs.readFileSync(cssPath, 'utf8');
+    } catch (e) {
+        check(false, '读不到 ' + cssLabel + '：' + e.message);
+    }
+
+    let keyboardBlock = null;
+    let keyBlock = null;
+    if (practiceCss) {
+        const css = stripCssComments(practiceCss);
+        keyboardBlock = ruleOf(css, '.keyboard');
+        keyBlock = ruleOf(css, '.key');
+
+        check(!!keyboardBlock, cssLabel + ' 里应有 .keyboard 规则（软键盘网格）');
+        check(!!keyBlock, cssLabel + ' 里应有 .key 规则（按键外观）');
+
+        // 1) 网格本身：5 列、每列 minmax(0, 1fr)
+        if (keyboardBlock) {
+            check(/display\s*:\s*grid/.test(keyboardBlock), '.keyboard 应保持 display:grid');
+            const cols = propOf(keyboardBlock, 'grid-template-columns');
+            check(!!cols, '.keyboard 应有 grid-template-columns');
+            if (cols) {
+                check(/^repeat\(\s*5\s*,/.test(cols), '.keyboard 应为 5 列：' + cols);
+                check(/minmax\(\s*0\w*\s*,\s*1fr\s*\)/.test(cols),
+                    '每列应用 minmax(0, 1fr)，否则「提交答案」等内容会把整列顶宽、右边按键被挤出键盘：' + cols);
+                // minmax(0,1fr) 之外不许再出现裸 1fr（裸 1fr 的最小宽度是 auto）
+                const withoutSafe = cols.replace(/minmax\(\s*0\w*\s*,\s*1fr\s*\)/g, 'SAFE');
+                check(!/(^|[(,\s])1fr(?=[\s),]|$)/.test(withoutSafe), '.keyboard 列定义里不应出现裸 1fr：' + cols);
+            }
+            check(/overflow\s*:\s*hidden/.test(keyboardBlock),
+                '.keyboard 应有 overflow:hidden 兜底：万一有内容撑宽，也在键盘内部截断，不会把右边的键挤到主区外');
+        }
+
+        // 2) 整份样式表里不许有 repeat(n, 1fr) 这种裸写法，也不许给键盘加 auto/min-content 列
+        const tpls = templateDecls(css);
+        check(!tpls.some(v => /repeat\(\s*\d+\s*,\s*1fr\s*\)/.test(v)),
+            cssLabel + ' 里不应出现 repeat(n, 1fr) 裸写法：' + tpls.filter(v => /repeat\(\s*\d+\s*,\s*1fr\s*\)/.test(v)).join(' | '));
+        check(!tpls.some(v => /\b(auto-fit|auto-fill|max-content|min-content)\b/.test(v)),
+            cssLabel + ' 的键盘网格不应退化成 auto-fit / max-content 之类按内容决定列数的写法');
+
+        // 3) 按键本身：可压缩 + 可点 + 字号/内边距跟视口缩放
+        if (keyBlock) {
+            const mw = propOf(keyBlock, 'min-width');
+            check(mw === '0' || mw === '0px', '.key 应有 min-width:0，窄屏时格子才能继续压缩（默认 min-width:auto 会把列顶宽）：' + mw);
+            const mh = propOf(keyBlock, 'min-height');
+            check(!!mh, '.key 应有 min-height，保证触屏点得到（手指尺寸 ≥40px）');
+            if (mh) {
+                const nums = (mh.match(/\d+(?:\.\d+)?/g) || []).map(Number);
+                check(nums.some(n => n >= 40), '.key 的 min-height 下限应 ≥40px：' + mh);
+            }
+            const fsVal = propOf(keyBlock, 'font-size');
+            check(!!fsVal && /clamp\(/.test(fsVal), '.key 的 font-size 应用 clamp() 跟视口缩放，不能写死：' + fsVal);
+            const pad = propOf(keyBlock, 'padding');
+            check(!!pad && /clamp\(/.test(pad), '.key 的 padding 应用 clamp() 跟视口缩放，不能写死：' + pad);
+        }
+
+        // 4) 动作键 / 提交键的字号也不能写死（它们的字号更小，光改 .key 管不到；
+        //    「提交答案」正是把第 5 列撑宽的那个）
+        ['.key.action', '.key.submit'].forEach(sel => {
+            const blk = ruleOf(css, sel);
+            check(!!blk, cssLabel + ' 里应有 ' + sel + ' 规则');
+            if (blk) {
+                const f = propOf(blk, 'font-size');
+                check(!f || /clamp\(/.test(f) || /rem|em|vw/.test(f),
+                    sel + ' 的 font-size 应可缩放（clamp/rem/vw），不要写死 px：' + f);
+            }
+        });
+
+        // 5) 样式表基本卫生 + 夜间模式没被顺手删掉
+        check((css.match(/\{/g) || []).length === (css.match(/\}/g) || []).length, cssLabel + ' 的花括号应配平');
+        check(/html\[data-theme="dark"\]/.test(practiceCss), cssLabel + ' 应保留夜间模式规则 html[data-theme="dark"]');
+        check(/--key-bg\s*:/.test(practiceCss) && /--key-action\s*:/.test(practiceCss), cssLabel + ' 的按键颜色应仍走 CSS 变量（夜间模式靠它换色）');
+    }
+
+    // 6) 三个练习页共用同一份 practice.css；math.html 另叠 math-drill.css 且必须排在其后
+    const pageFiles = ['practice.html', 'equations.html', 'math.html'];
+    pageFiles.forEach(file => {
+        let html = null;
+        try {
+            html = fs.readFileSync(path.join(root, 'frontend', file), 'utf8');
+        } catch (e) {
+            check(false, '读不到 frontend/' + file + '：' + e.message);
+            return;
+        }
+        const links = [...html.matchAll(/<link[^>]+href="([^"]+\.css[^"]*)"/g)].map(m => stripVer(m[1]));
+        const pi = links.indexOf('css/practice.css');
+        check(pi >= 0, file + ' 应引用 css/practice.css（三个练习页共用同一份键盘样式）');
+        if (file === 'math.html') {
+            const mi = links.indexOf('css/math-drill.css');
+            check(mi >= 0, 'math.html 应引用 css/math-drill.css（提交键跨列的布局在那里）');
+            check(pi >= 0 && mi > pi, 'math.html 的 math-drill.css 必须排在 practice.css 之后，跨列规则才覆盖得了基础网格');
+        }
+        // 键盘里必须有容器和提交键（跨列布局的前提）
+        check(/id="keyboard"/.test(html), file + ' 应有 id="keyboard" 的软键盘容器');
+        check(/class="key submit"[^>]*data-action="submit"/.test(html) || /data-action="submit"[^>]*class="key submit"/.test(html),
+            file + ' 应有 .key.submit 提交键');
+    });
+
+    // 7) 三页键数与 HTML 现状一致（改了 HTML 这里先失败，提醒同步量真机）
+    const countKeys = (file) => {
+        const html = fs.readFileSync(path.join(root, 'frontend', file), 'utf8');
+        const start = html.indexOf('id="keyboard"');
+        const end = html.indexOf('<script', start < 0 ? 0 : start);
+        const block = start < 0 ? '' : html.slice(start, end < 0 ? html.length : end);
+        return (block.match(/class="key(?:\s[^"]*)?"/g) || []).length;
+    };
+    [['practice.html', 25], ['equations.html', 26], ['math.html', 22]].forEach(([file, want]) => {
+        let got = -1;
+        try { got = countKeys(file); } catch (e) { check(false, '数不了 ' + file + ' 的按键：' + e.message); return; }
+        check(got === want, file + ' 软键盘应有 ' + want + ' 个键，实际 ' + got);
+    });
+
+    // 8) 键盘和主区不许出现横向滚动（窄屏靠压缩格子解决，不是让学生左右扒拉）
+    //    注意 .step-body（解题过程）本来就允许 overflow-x:auto，那是另一回事，别误伤
+    if (practiceCss) {
+        const css = stripCssComments(practiceCss);
+        ['.keyboard', '.key', '.app-main', '.container'].forEach(sel => {
+            const blk = ruleOf(css, sel);
+            if (!blk) return;
+            const ox = propOf(blk, 'overflow-x');
+            check(!ox || !/scroll|auto/.test(ox), sel + ' 不应出现 overflow-x:' + ox + ' —— 键盘与主区拒绝横向滚动');
+        });
+    }
+})();
+
+// ---------- issue #4 续：桌面端按键高度封顶（防止键盘把题面挤出第一屏） ----------
+// 第一步修完之后，桌面端按键从 57px 长到 87px：一屏能看到的题面少了，
+// 而平板/桌面本来不缺横向空间。这里守「桌面封顶、手机仍是大键」这件事。
+(function assertKeyboardDesktopHeight() {
+    const cssLabel = 'frontend/css/practice.css';
+    const stripCssComments = (src) => String(src).replace(/\/\*[\s\S]*?\*\//g, '');
+    let raw = null;
+    try {
+        raw = fs.readFileSync(path.join(root, 'frontend', 'css', 'practice.css'), 'utf8');
+    } catch (e) {
+        check(false, '读不到 ' + cssLabel + '：' + e.message);
+        return;
+    }
+    const css = stripCssComments(raw);
+
+    // 找出所有 max-width / min-width 查询的 @media 块（只取一层的正文，嵌套不在这里用）
+    const mediaBlocks = [...css.matchAll(/@media[^{]*\{\s*([\s\S]*?\n\})\s*\n?/g)]
+        .map(m => ({ head: m[0].slice(0, m[0].indexOf('{')), body: m[1] }));
+
+    // 1) 必须存在一个「宽屏」媒体查询
+    const wide = mediaBlocks.filter(b => /min-width\s*:\s*(\d+)\s*px/.test(b.head) && Number(RegExp.$1) >= 768);
+    check(wide.length > 0, cssLabel + ' 应有 min-width ≥768px 的宽屏媒体查询，把桌面端按键高度压回来');
+
+    // 2) 这个宽屏块里要同时把 .key 的高度封顶、内边距还原
+    const hold = wide.filter(b => /\.key\s*\{[^}]*max-height\s*:/.test(b.body));
+    check(hold.length > 0, '宽屏媒体查询里应给 .key 加 max-height，否则 1280 宽的桌面按键会被 15vw 撑到 87px');
+    if (hold.length) {
+        const m = hold[0].body.match(/\.key\s*\{([^}]*)\}/);
+        const block = m ? m[1] : '';
+        const mh = (block.match(/max-height\s*:\s*([^;]+)/) || [])[1];
+        check(!!mh, '.key 的 max-height 写在媒体查询里应能取到值');
+        if (mh) {
+            const v = parseFloat(mh);
+            check(!isNaN(v) && v >= 44 && v <= 72,
+                '.key 桌面端 max-height 应在 44~72px（小于触屏可点尺寸就不合适、大于 72px 又会把题面挤出第一屏）：' + mh.trim());
+        }
+        check(/padding\s*:\s*15px\s+0/.test(block),
+            '宽屏媒体查询里 .key 的 padding 应还原成 15px 0（与改动前一致），实际：' + block.replace(/\s+/g, ' ').trim());
+        // 没有 border-box 时 max-height 压不住 padding 撑出来的盒子（content-box 下 = 15+内容+15）
+        const bs = (block.match(/box-sizing\s*:\s*([^;]+)/) || [])[1];
+        check(!!bs && bs.trim() === 'border-box',
+            '宽屏媒体查询里 .key 应写 box-sizing: border-box，否则 padding 15px 0 会把 max-height 顶破，桌面按键仍是 87px：' + bs);
+    }
+
+    // 3) 窄屏仍然是大键：.key 的 min-height 下限不能低于 44px（这条与上一节呼应，防止为压桌面而砍手机）
+    const keyBlock = (css.match(/(?:^|\})\s*\.key\s*\{([^}]*)\}/) || [])[1] || '';
+    const mhDecl = (keyBlock.match(/min-height\s*:\s*([^;]+)/) || [])[1] || '';
+    const nums = (mhDecl.match(/\d+(?:\.\d+)?/g) || []).map(Number);
+    // clamp(44px, 15vw, 55px) 里三个数依次是下限、理想值、上限；下限是第一个数
+    const lower = nums.length ? nums[0] : NaN;
+    check(!isNaN(lower) && lower >= 44,
+        '.key 的 min-height 下限应 ≥44px（手机上仍要够大、点得准）：' + mhDecl.trim());
+})();

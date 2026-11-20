@@ -207,6 +207,49 @@ ok(latexOf('1/2(x+1) = 3/2') === '\\dfrac{1}{2}\\left(x+1\\right)\\;=\\;\\dfrac{
     '分数系数方程 LaTeX 不符: ' + latexOf('1/2(x+1) = 3/2'));
 ok(latexOf('x=') === null && latexOf('') === null && latexOf(null) === null, '无法解析时应返回 null');
 
+// ---------- 6. 结果要约到最简（GitHub issue #3） ----------
+// 方程 1/3(5x - 1) = 13/6 的解是 3/2，学生写 x = 15/10 要判「没约分」而不是完全正确。
+// 两种 unmerged 的 msg 必须能分清：没约分说「约到最简」，没化系数为一说「化系数为一」。
+const unreducedMsg = (r) => r.status === 'unmerged' && /最简/.test(r.msg) && /约/.test(r.msg);
+const unfoldMsg = (r) => r.status === 'unmerged' && /化系数为一/.test(r.msg);
+
+// issue 原题：解析末步是 3/2，学生答 15/10 不能再判对
+ok(JSON.stringify(E.buildSteps('1/3(5x - 1) = 13/6', 'x=3/2').map(s => norm(s.expr)).slice(-1))
+    === JSON.stringify(['x=3/2']), 'issue#3 原题解析末步应是 x = 3/2');
+const issue = E.evaluateAnswer('x=15/10', 'x=3/2');
+ok(issue.status === 'unmerged' && unreducedMsg(issue), 'issue#3 回归：x=15/10 应判「没约分」的 unmerged: ' + JSON.stringify(issue));
+
+// 能约没约的写法 -> unmerged，且 msg 讲的是约分
+[['x=15/10', 'x=3/2'], ['15/10', 'x=3/2'], ['x=4/6', 'x=2/3'], ['x=-2/4', 'x=-1/2'],
+    ['x=-6/4', 'x=-3/2'], ['x=9/6', 'x=3/2']].forEach(([s, g]) => {
+        const r = E.evaluateAnswer(s, g);
+        ok(r.status === 'unmerged' && unreducedMsg(r), '未约分应判 unmerged（约分提示）: ' + s + ' 实际 ' + JSON.stringify(r));
+    });
+// 已经最简/其他合法写法 -> 仍然 correct（不能借这次改动收紧别的规则）
+[['x=3/2', 'x=3/2'], ['x=1.5', 'x=3/2'], ['x=4', 'x=4'], ['4', 'x=4'], ['4=x', 'x=4'],
+    ['x=8/2', 'x=4'], ['x=0/4', 'x=0'], ['x=3/2+0/4', 'x=3/2']].forEach(([s, g]) => {
+        const r = E.evaluateAnswer(s, g);
+        ok(r.status === 'correct', '最简/整数/小数仍应判 correct: ' + s + '（标准 ' + g + '）实际 ' + JSON.stringify(r));
+    });
+// 没化系数为一的老口径不变，msg 必须和「没约分」区分开
+const unfold = E.evaluateAnswer('2x=8', 'x=4');
+ok(unfold.status === 'unmerged' && unfoldMsg(unfold) && !/最简/.test(unfold.msg),
+    '2x=8 仍应判「没化系数为一」的 unmerged: ' + JSON.stringify(unfold));
+// 不约分提示只针对「值也对」的答案；值错了照样 wrong
+ok(E.evaluateAnswer('x=16/10', 'x=3/2').status === 'wrong', '值不对时不能只报没约分');
+// 分母是 1 的分数就是整数，不算没约分
+ok(E.evaluateAnswer('x=8/2', 'x=4').status === 'correct', 'x=8/2 等于整数 4，应判 correct');
+
+// 随机 2000 道：用标准答案提交必须判 correct（回归保护，防止约分判断误伤正常答案）
+let randomBad = 0;
+for (let i = 0; i < 2000; i++) {
+    const q = E.generateQuestion(1 + (i % 4));
+    if (E.evaluateAnswer(q.answer, q.answer).status !== 'correct') randomBad++;
+    // 去掉 x= 直接写数值，同样必须判对
+    if (E.evaluateAnswer(q.answer.replace(/^x=/, ''), q.answer).status !== 'correct') randomBad++;
+}
+ok(randomBad === 0, '随机 2000 道标准答案应判 correct，实际异常 ' + randomBad + ' 条');
+
 // ---------- 汇总 ----------
 console.log('=== 方程引擎自检 ===');
 for (let lv = 1; lv <= 4; lv++) {

@@ -455,9 +455,11 @@
                     showSteps(currentInput, 'correct');
                     enterResultMode();
                 } else if (result.status === 'unmerged') {
-                    // 「对，但还没化系数为一」：答案等价却停在 2x=8 这种形式，按没做完登记；判题口径全部交给引擎
+                    // 「对，但还没做完」：一种是停在 2x=8 没化系数为一，另一种是 x=15/10 没约分。
+                    // 两种都按没做完登记，具体是哪一种、提示怎么约，全部交给引擎的 msg（这里不再硬编码文案）
                     fbEl.style.color = 'var(--warn)';
-                    fbEl.textContent = "对，但还没化系数为一。完整过程在下面，看完点「下一题」。";
+                    fbEl.textContent = (result.msg || "对，但还没有做完。")
+                        + " 完整过程在下面，对照检查一下，看完点「下一题」。";
                     reportAttempt('unmerged', false, currentInput);
                     showSteps(currentInput, 'unmerged');
                     enterResultMode();
