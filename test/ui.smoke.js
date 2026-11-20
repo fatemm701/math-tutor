@@ -1648,11 +1648,13 @@ if (!mathHtmlSrc) {
     // 引用顺序：样式 → 三方库 → 引擎 → 导航 → 页面脚本
     mathCheck(nav.headLinks.join('|') === 'vendor/katex/katex.min.css|css/practice.css|css/app-nav.css|css/math-drill.css',
         'math.html 的样式引用顺序不对：' + nav.headLinks.join('|'));
-    mathCheck(nav.headScripts.join('|') === 'vendor/katex/katex.min.js|vendor/math.js|js/arith-engine.js',
+    // math-core.js 必须在 arith-engine.js 之前：引擎末尾的浏览器出口要求 global.MathCore 已存在，
+    // 少这一个脚本时 window.ArithEngine 会是 undefined，整页只剩一行「口算引擎未加载」（2026-11 的事故就出在这）
+    mathCheck(nav.headScripts.join('|') === 'vendor/katex/katex.min.js|vendor/math.js|js/math-core.js|js/arith-engine.js',
         'math.html 的 head 脚本顺序不对：' + nav.headScripts.join('|'));
     const bodyScripts = [...mh.matchAll(/<script\s+src="([^"]+)"/g)].map(x => stripVer(x[1]));
     mathCheck(JSON.stringify(bodyScripts) === JSON.stringify(['vendor/katex/katex.min.js', 'vendor/math.js',
-        'js/arith-engine.js', 'js/app-nav.js', 'js/math-drill-page.js']),
+        'js/math-core.js', 'js/arith-engine.js', 'js/app-nav.js', 'js/math-drill-page.js']),
         'math.html 的全部脚本顺序不对：' + bodyScripts.join('|'));
     // 本地资源一律带 ?v= 版本号（与其它页面同一个提交号）
     const localRefs = [...mh.matchAll(/(?:href|src)="((?:css|js)\/[^"]+)"/g)].map(x => x[1]);

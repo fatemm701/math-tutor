@@ -1575,5 +1575,9 @@
     }
     if (typeof global !== 'undefined' && global.math && global.MathCore) {
         global.ArithEngine = createArithEngine(global.math, global.MathCore);
+    } else if (typeof global !== 'undefined' && global.math) {
+        // 缺 math-core 时不能悄悄什么都不挂：页面拿到 undefined 只会白屏，
+        // 挂个带 __loadError 的占位对象，页面才能把「缺哪个文件」直接写到学生眼前
+        global.ArithEngine = { __loadError: 'js/math-core.js 未加载' };
     }
 })(typeof globalThis !== 'undefined' ? globalThis : this);

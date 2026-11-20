@@ -3,7 +3,7 @@ poly-drill/
 │  ├─ server.js          # Express 入口：静态页面 + 账号/记录 API + /api/health
 │  ├─ store.js           # data/db.json 读写（临时文件 + rename 原子落盘、会话清理）
 │  ├─ auth.js            # scrypt 密码哈希、会话 Cookie、登录/老师权限中间件
-│  ├─ scoring.js         # 计分口径 + 筛选计数 + 题型（simplify/equation）归类（看板与学生自查共用，纯计算）
+│  ├─ scoring.js         # 计分口径 + 筛选计数 + 题型（simplify/equation/arithmetic）归类（看板与学生自查共用，纯计算）
 │  └─ routes/
 │     ├─ auth.js         # 注册 / 登录 / 登出 / 当前用户（含登录失败限速）
 │     ├─ attempts.js     # 做题记录上报（含 topic 题型）/ 查自己的记录 / 自己的汇总
@@ -12,15 +12,20 @@ poly-drill/
 │  ├─ index.html         # 登录 / 注册页
 │  ├─ practice.html      # 整式化简答题页结构（软键盘、题目/解析面板）
 │  ├─ equations.html     # 一元一次方程答题页结构（左侧导航切换，多一个 = 键）
-│  ├─ css/practice.css   # 练习页样式（两个练习页共用）
-│  ├─ css/app-nav.css    # 左侧导航栏样式（四页共用：收起态、分组、窄屏抽屉、夜间模式）
+│  ├─ math.html          # 口算训练答题页结构（四档难度、数字键盘）——脚本顺序 math.js → math-core.js → arith-engine.js
+│  ├─ favicon.svg        # 站点图标（五页共用，免得浏览器去要 /favicon.ico 报 404）
+│  ├─ css/practice.css   # 练习页样式（三个练习页共用）
+│  ├─ css/app-nav.css    # 左侧导航栏样式（五页共用：收起态、分组、窄屏抽屉、夜间模式）
+│  ├─ css/math-drill.css # 口算页样式（分数/小数标签、档位说明、跨列提交键、带补充说明的步骤行）
 │  ├─ js/
 │  │  ├─ math-core.js    # 多项式解析、展开、格式化；有理数系数（纯计算）
 │  │  ├─ poly-tree.js    # 「项 -> 括号 -> 项」树：去括号、合并同类项（两套引擎共用）
 │  │  ├─ engine-simplify.js      # 整式化简：出题、判题、分步解析、提示
 │  │  ├─ equation-engine.js      # 一元一次方程：出题、判题、分步解析、提示
+│  │  ├─ arith-engine.js # 口算：四档出题（整数加减 / 分数 / 乘除 / 混合与简算）、判题、分步过程、提示
 │  │  ├─ practice.js     # 化简页渲染、键盘、缓存、上报
 │  │  ├─ practice-equations.js   # 方程页渲染、键盘、缓存、上报
+│  │  ├─ math-drill-page.js      # 口算页渲染、软键盘与物理键盘、本档进度、缓存、上报
 │  │  └─ app-nav.js      # 左侧导航：收起/分组记忆、窄屏抽屉、当前页高亮、按角色显示看板入口
 │  ├─ teacher.html       # 看板（老师看全班；学生进来只看自己的「我的练习」）
 │  └─ vendor/            # 本地 KaTeX + mathjs（离线可用，不依赖 CDN）
@@ -28,14 +33,17 @@ poly-drill/
 │  ├─ engine.test.js     # 直接加载 math-core.js + poly-tree.js + engine-simplify.js
 │  ├─ fraction.test.js   # 分数系数：有理数运算、解析、判等、步骤、判卷、随机分数题
 │  ├─ equation.test.js   # 一元一次方程：出题质量、逐步同解、判题分支、提示、LaTeX
-│  ├─ ui.smoke.js        # 交互冒烟（两个练习页：软键盘、分数标签/斜杠输入、等号、提交、提示、看解析）
+│  ├─ math-drill.test.js # 口算引擎：四档各若干百道的出题质量、判题（含 0.75 与 3/4 等价）、步骤、提示
+│  ├─ ui.smoke.js        # 交互冒烟（三个练习页：软键盘、分数标签/斜杠输入、等号、提交、提示、看解析）
 │  ├─ nav.smoke.js       # 左侧导航冒烟（收起/分组记忆、窄屏抽屉、当前页高亮、访客/登录态）
 │  ├─ auth.smoke.js      # 登录注册页冒烟
-│  ├─ teacher.smoke.js   # 看板冒烟（老师视角 + 学生「我的练习」视角，含方程列与题型筛选）
-│  ├─ asset-version.test.js  # 页面资源版本号自检（css/js 都带 ?v=提交号、四页一致）
+│  ├─ teacher.smoke.js   # 看板冒烟（老师视角 + 学生「我的练习」视角，含方程/口算列与题型筛选）
+│  ├─ asset-version.test.js  # 页面资源版本号自检（css/js 都带 ?v=提交号、五页一致）
+│  ├─ page-assets.test.js    # 页面脚本依赖顺序自检（谁先谁后、文件存在、<div> 配平），防「漏一个 script 整页空白」
 │  └─ api.test.js        # 接口测试（真实起服务、临时 DATA_DIR，含 topic 统计）
 ├─ scripts/
-│  └─ stamp-assets.js    # 给四个页面的本地 css/js 引用打 ?v=<提交号>（npm run stamp / stamp:check）
+│  ├─ stamp-assets.js    # 给五个页面的本地 css/js 引用打 ?v=<提交号>（npm run stamp / stamp:check）
+│  └─ smoke-browser.js   # 真浏览器冒烟：headless Chrome 打开口算页，验引擎挂载/题面/键盘/判题/下一题（npm run smoke:browser）
 ├─ data/
 │  └─ db.json            # 运行时生成，已 gitignore；Docker 里挂在 /app/data
 ├─ Dockerfile            # node:22-alpine，非 root 运行，内置健康检查

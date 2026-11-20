@@ -7,15 +7,60 @@
     'use strict';
 
     const engine = window.ArithEngine;
-    if (!engine) {
-        console.error('[poly-drill] 口算引擎未加载');
-        return;
-    }
+    // 引擎缺失时只有一个 console.error，学生看到的是「页面一片空白」，没有任何人能据此修：
+    // 所以后面仍然挂上 window.onload，把缺的文件名直接写到 #feedback-display 上。
+    // （引擎出口在缺 math-core 时会挂一个 { __loadError } 占位对象，这里一并当成缺失处理）
+    const engineMissing = !engine || typeof engine.generateQuestion !== 'function';
+    const engineErrorText = engine
+        ? (engine.__loadError || '口算引擎不完整（缺 generateQuestion），请按 Ctrl+F5 强制刷新')
+        : '口算引擎未加载（缺 js/arith-engine.js），请按 Ctrl+F5 强制刷新';
+    if (engineMissing) console.error('[poly-drill] 口算引擎未加载：' + engineErrorText);
 
+    // 占位对象上没有 generateQuestion，解构出来是 undefined，只在真正出题时才会被发现；
+    // 这里先按「没有引擎」处理，下面的启动自检会把缺的文件名全部报出来
     const {
         generateQuestion,
         LEVEL_NAMES
-    } = engine;
+    } = engineMissing ? {} : engine;
+
+    // ---------- 启动自检 ----------
+    // 这四个文件缺任何一个，页面都做不了题。写明文件名，学生/老师照着截图就能判断是哪次发版漏了文件
+    const ENV_FILES = {
+        mathjs: 'vendor/math.js（mathjs）',
+        core: 'js/math-core.js',
+        arith: 'js/arith-engine.js',
+        katex: 'vendor/katex/katex.min.js'
+    };
+
+    // 返回缺失项的中文描述；全都齐了返回空字符串
+    // 引擎和页面是一个整体：引擎能起来就说明 math.js / math-core.js 都在（引擎运行时依赖它们），
+    // 所以只有引擎缺失时才逐个点名上游文件，省得引擎正常时还拿两个全局变量误报一遍
+    function assertEnv() {
+        const problems = [];
+        if (engineMissing) {
+            if (!window.math) problems.push('缺 ' + ENV_FILES.mathjs + '，题目无法生成');
+            if (!window.MathCore) problems.push('缺 ' + ENV_FILES.core + '，口算引擎起不来');
+            // 占位对象已经说明了具体缺哪个文件，这里的文件名只用来区分「没请求到」和「不完整」
+            problems.push(engine && engine.__loadError
+                ? '缺 ' + ENV_FILES.arith + '（' + engine.__loadError + '）'
+                : '缺或不完整的 ' + ENV_FILES.arith);
+        }
+        // KaTeX 缺失只影响排版：renderMath 会自动退化成纯文本，老设备上照常能做，
+        // 所以只提示不挡路（下面的启动流程不会因为它停下）
+        if (!window.katex) console.warn('[poly-drill] 缺 ' + ENV_FILES.katex + '，题面改用纯文本排版');
+        return problems.join('；');
+    }
+
+    // 显眼地把启动失败写给学生看：反馈区 + 侧边栏身份，侧边栏单独标一次，免得学生只盯题面
+    function showFatalError(msg) {
+        const fb = document.getElementById('feedback-display');
+        if (fb) {
+            fb.textContent = msg;
+            fb.style.color = 'var(--danger)';
+        }
+        const who = document.getElementById('who');
+        if (who) who.textContent = '加载失败';
+    }
 
     // 引擎的判题/解析/提示/LaTeX 转换是页面主要依赖；但引擎和页面是并行开发的，
     // 缺哪个就退回 math-core 的 toLatexText（排版）或一个明确的中文报错，页面不整体崩。
@@ -165,13 +210,24 @@
         } catch (e) { /* 记不住就算了，本次会话内照样能切 */ }
     }
 
+    // 当前是不是夜里：以 <html data-theme> 为准（首帧脚本和应用都会同步它），
+    // 它代表「屏幕上现在是什么」，localStorage 只代表「上次存了什么」
+    function isDarkNow() {
+        const root = document.documentElement;
+        return !!(root && root.getAttribute && root.getAttribute('data-theme') === 'dark');
+    }
+
     function initThemeToggle() {
         const btn = document.getElementById('theme-toggle');
         if (!btn) return;
         // 首帧的状态由 <head> 里的脚本决定，这里只把按钮图标对齐
         applyTheme(readTheme(), btn);
+        // 切换要看「当前真实状态」，不能再读一遍 localStorage：applyTheme 后两者总是一致，
+        // 但只要哪次写入被浏览器拒掉，读回旧值就会卡在同一档，按钮看着像坏了
         btn.addEventListener('click', () => {
-            applyTheme(readTheme() === 'dark' ? 'light' : 'dark', btn);
+            // 状态以 <html data-theme> 为准：applyTheme 之后两者总是一致，
+            // 但只要哪次写入被浏览器拒掉，读回 localStorage 旧值就会卡在同一档，按钮看着像坏了
+            applyTheme(isDarkNow() ? 'light' : 'dark', btn);
         });
     }
 
@@ -188,6 +244,11 @@
         // 化简页是 poly_current_q、方程页是 eq_current_q，口算单独一个 arith_current_q：
         // 三种题型各留各的题，来回切换不会互相顶掉
         let STORAGE_KEY = 'arith_current_q';
+        // 本档进度只记在浏览器里（arith_progress:<用户 id>），不新增后端请求：
+        // 看板要的是做题记录，这里只是给学生「这一档已经练了多少、对了多少」的心理锚点
+        let PROGRESS_KEY = 'arith_progress';
+        // { '1': { done, correct }, '2': ... }；localStorage 不可用时停在内存里，本次会话照常计数
+        let progress = null;
 
         let currentUser = null;
         let currentInput = '';
@@ -208,6 +269,8 @@
         const decimalTagEl = document.getElementById('q-tag-decimal'); // 「小数」标签，.tag-decimal
         const keyboardEl = document.getElementById('keyboard');
         const submitKey = document.querySelector('.key.submit');
+        // 进度小字：由脚本创建、挂在 #level-label 后面（不新增 HTML 节点，样式沿用 .level-desc）
+        let progressEl = null;
 
         // ---------- 账号 ----------
         async function fetchMe() {
@@ -224,6 +287,8 @@
         function rememberUser(user) {
             currentUser = user;
             STORAGE_KEY = 'arith_current_q:' + user.id;   // 同一浏览器换人登录不会串题
+            PROGRESS_KEY = 'arith_progress:' + user.id;   // 同一个浏览器换人登录也不会串进度
+            loadProgress();
             const whoEl = document.getElementById('who');
             if (whoEl) {
                 const roleLabel = user.role === 'teacher' ? '老师' : '学生';
@@ -247,6 +312,55 @@
 
         function clearCachedQuestion() {
             try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* 忽略 */ }
+        }
+
+        // ---------- 本档进度（只存 localStorage） ----------
+        // 记成 { '1': { done: 24, correct: 19 }, ... }：done 是这一档做完的题数，
+        // correct 是其中答对的题数；看解析/错两次算做完但不算对
+        function loadProgress() {
+            let saved = null;
+            try { saved = JSON.parse(localStorage.getItem(PROGRESS_KEY)); } catch (e) { saved = null; }
+            progress = saved && typeof saved === 'object' ? saved : {};
+        }
+
+        function saveProgress() {
+            try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress)); } catch (e) { /* 记不住就算了，本次会话内照样计数 */ }
+        }
+
+        function bumpProgress(level, isCorrect) {
+            if (!progress) progress = {};
+            const key = String(level);
+            const item = progress[key] && typeof progress[key] === 'object' ? progress[key] : { done: 0, correct: 0 };
+            progress[key] = {
+                done: (Number(item.done) || 0) + 1,
+                correct: (Number(item.correct) || 0) + (isCorrect ? 1 : 0)
+            };
+            saveProgress();
+            renderProgress();
+        }
+
+        // 小字跟着当前档走：换档时显示的是新档自己的计数（还没做过就是 0）
+        function renderProgress() {
+            if (!progressEl || !progressEl.parentNode) return;
+            const level = (currentQ && currentQ.level) || DEFAULT_LEVEL;
+            const item = (progress && progress[String(level)]) || { done: 0, correct: 0 };
+            progressEl.textContent = '本档已做 ' + (Number(item.done) || 0) + ' 题 · 正确 ' + (Number(item.correct) || 0) + ' 题';
+        }
+
+        // 节点由脚本建在 #level-label 后面：改 html 会牵动软键盘夹具的静态断言，
+        // 而进度本来就是运行时数据，不值得为它在页面上占一个空壳
+        function initProgressEl() {
+            if (!levelLabel || !levelLabel.parentNode) return;
+            if (typeof document.createElement !== 'function') return;
+            progressEl = document.createElement('p');
+            progressEl.className = 'level-desc';
+            progressEl.id = 'level-progress';
+            if (typeof levelLabel.insertAdjacentElement === 'function') {
+                levelLabel.insertAdjacentElement('afterend', progressEl);
+            } else {
+                levelLabel.parentNode.appendChild(progressEl);
+            }
+            renderProgress();
         }
 
         // 一题结束时上报一次；失败只警告，绝不影响做题
@@ -289,6 +403,17 @@
                 && LEVELS.includes(q.level);
         }
 
+        // 包一层：引擎抛异常不该把整个 onload 打断（打断后页面就停在半初始化状态，
+        // 连「下一题」都点不动），所以异常交给调用方记下来，由它决定重试还是报错
+        function attemptGenerate(level, onError) {
+            try {
+                return generateQuestion(level);
+            } catch (err) {
+                onError(err);
+                return null;
+            }
+        }
+
         // 顶部标题：档名 + 内容（「① 入门 · 百以内正负数加减」）
         // #q-tag / #q-tag-decimal 是标题里的两枚徽标，用 textNode 拼回去，
         // 这样口径与方程页一致（标签是 #level-label 的子节点，不是被覆盖的 innerHTML）
@@ -324,10 +449,31 @@
             const level = (currentQ && currentQ.level) || DEFAULT_LEVEL;
             if (levelDesc) levelDesc.textContent = LEVEL_DESCS[level] || '';
             renderLevelLabel();
+            renderProgress();
+        }
+
+        // 一题没生成出来时不能白屏：题面位置写明原因，提交键切到「下一题」，
+        // 学生点一下就能换一题重新出（换题会再走一次 generateQuestion）
+        function showGenerateFailure(level, err, shownErr) {
+            console.error('[poly-drill] 出题失败:', err || shownErr);
+            isLocked = true;
+            currentQ = null;
+            currentInput = '';
+            resetPanels();
+            renderInput();
+            if (qEl) qEl.textContent = '这一题没出出来';
+            if (fbEl) {
+                fbEl.style.color = 'var(--danger)';
+                fbEl.textContent = '这一题没生成出来，点「下一题」重试';
+                if (shownErr) fbEl.textContent += '（' + shownErr + '）';
+            }
+            if (levelDesc) levelDesc.textContent = LEVEL_DESCS[level] || levelDesc.textContent;
+            setSubmitKey('next', '下一题');
         }
 
         // 加载题目：默认优先读取本地存货，刷新页面不丢当前题
-        function loadQuestion(level = DEFAULT_LEVEL, forceNew = false) {
+        // failState 只给「重新出题」用：连出三次都失败就不再换档重试，免得原地打转
+        function loadQuestion(level = DEFAULT_LEVEL, forceNew = false, failState) {
             isLocked = false;
             currentInput = '';
             wrongCount = 0;
@@ -351,7 +497,23 @@
                 if (!currentQ.clientId) currentQ.clientId = makeClientId();
                 cacheQuestion();
             } else {
-                currentQ = generateQuestion(level);
+                // 出题在引擎里，随机边界上偶尔会抛异常或吐出半截对象：
+                // 记下次数重试（同一档最多 3 次），实在不行就把原因摆到页面上，不让学生面对空白
+                const tries = (failState && Number(failState.tries)) || 0;
+                let picked = null;
+                let thrown = null;
+                for (let i = 0; i < 3 && !picked; i++) {
+                    const candidate = attemptGenerate(level, err => { thrown = err; });
+                    if (isValidQuestion(candidate)) picked = candidate;
+                }
+                const shownErr = thrown ? String(thrown.message || thrown) : '';
+                if (!picked) {
+                    if (!failState || tries < 3) {
+                        return loadQuestion(level, true, { tries: tries + 1 });
+                    }
+                    return showGenerateFailure(level, thrown, shownErr);
+                }
+                currentQ = picked;
                 currentQ.startedAt = Date.now();
                 currentQ.clientId = makeClientId();
                 cacheQuestion();
@@ -507,7 +669,11 @@
         });
 
         // 虚拟键盘
-        keyboardEl.addEventListener('click', (e) => {
+        keyboardEl.addEventListener('click', handleKeyAction);
+
+        // 一个按键的全部行为：虚拟键盘点一下和物理键盘按一下都走这里，
+        // 判题、上锁、上报只有这一份，两边不会跑出不同的结果
+        function handleKeyAction(e) {
             const btn = e.target.closest('.key');
             if (!btn) return;
 
@@ -542,6 +708,8 @@
 
                 enterResultMode();
                 reportAttempt('wrong', true, beforeGiveUp, true);
+                // 看了标准答案就不算做对：记进「已做」但正确数不动
+                bumpProgress(currentQ.level, false);
             } else if (action === 'submit') {
                 if (currentInput === '') return;
 
@@ -558,6 +726,7 @@
                     fbEl.style.color = 'var(--ok)';
                     fbEl.textContent = result.msg + ' 完整过程在下面，对照检查一下，看完点「下一题」。';
                     reportAttempt('correct', false, currentInput);
+                    bumpProgress(currentQ.level, true);
                     showSteps(currentInput, 'correct');
                     enterResultMode();
                 } else if (result.status === 'wrong') {
@@ -569,6 +738,7 @@
                         fbEl.textContent = '这题错了两次，完整过程在下面，对照看看是哪一步出的问题。看完点「下一题」。';
                         enterResultMode();
                         reportAttempt('wrong', true, currentInput);
+                        bumpProgress(currentQ.level, false);
                     } else {
                         fbEl.textContent = result.msg + '（还有 1 次机会，再想想；卡住可以点「提示」）';
                     }
@@ -579,12 +749,85 @@
                 }
             } else if (action === 'next') {
                 clearCachedQuestion();
-                loadQuestion(currentQ.level, true);
+                // 上一题出题失败时 currentQ 是空的，这会儿学生手上没有档位可用，退回默认档
+                loadQuestion((currentQ && currentQ.level) || DEFAULT_LEVEL, true);
                 return; // 已经换题，不再渲染旧输入
             }
 
             if (!isLocked) renderInput();
-        });
+        }
+
+        // 键盘直接输入：学生多半是用电脑做题，只用鼠标点虚拟键盘太慢。
+        // 只认口算需要的字符（数字、.+ - × ÷、括号），其它按键一律放过，
+        // 免得抢掉浏览器快捷键和中文输入法
+        const KEY_CHARS = {
+            '0': '0', '1': '1', '2': '2', '3': '3', '4': '4',
+            '5': '5', '6': '6', '7': '7', '8': '8', '9': '9',
+            '.': '.', ',': '.',
+            '-': '-', '−': '-', '_': '-',
+            '+': '+', '/': '/', '*': '*', '×': '*', '÷': '/', 'x': '*', 'X': '*',
+            '(': '(', ')': ')'
+        };
+
+        // 输入区没有真实的 <input>，全部状态在 currentInput 里，
+        // 所以键盘事件只能自己维护：拼接、退格、清空、提交四件事，与虚拟键盘共用同一套提交逻辑
+        const onKeydown = (e) => {
+            // 焦点在输入框/下拉里时用户可能在做别的事（比如登录名），不抢
+            const target = e.target;
+            const tag = target && target.tagName ? String(target.tagName).toLowerCase() : '';
+            if (tag === 'input' || tag === 'textarea' || tag === 'select' || (target && target.isContentEditable)) return;
+            if (e.ctrlKey || e.metaKey || e.altKey) return;   // Ctrl+R 之类的浏览器快捷键不拦
+            // 输入法候选框打开时按键用来选词，这时候接走会打断中文输入
+            if (e.isComposing || e.keyCode === 229) return;
+
+            if (e.key === 'Enter') {
+                // 锁定后回车就是「下一题」，和按钮行为一致，连着做题不用去摸鼠标
+                if (isLocked) {
+                    pressKey('next');
+                } else if (currentInput !== '') {
+                    pressKey('submit');
+                }
+                e.preventDefault();
+                return;
+            }
+            if (e.key === 'Backspace') {
+                if (!isLocked && currentInput !== '') {
+                    currentInput = currentInput.slice(0, -1);
+                    renderInput();
+                }
+                // 输入区没有 <input>，浏览器默认的「后退」行为必须拦住
+                e.preventDefault();
+                return;
+            }
+            if (e.key === 'Escape') {
+                if (!isLocked && currentInput !== '') {
+                    currentInput = '';
+                    renderInput();
+                }
+                // 不 preventDefault：按 Esc 时学生可能同时想退出全屏或关弹窗
+                return;
+            }
+            if (isLocked) return;   // 本题已经结束，字符不再进输入
+
+            const ch = KEY_CHARS[e.key];
+            if (!ch) return;        // 白名单外（字母、F1、Tab 等）一律不碰
+            currentInput += ch;
+            fbEl.textContent = '';
+            renderInput();
+            e.preventDefault();
+        };
+
+        // 键盘只是锦上添花：挂不上（老设备、无头环境）时虚拟键盘照样能用，
+        // 不能因为这一行让整个页面启动失败
+        if (typeof document.addEventListener === 'function') {
+            document.addEventListener('keydown', onKeydown);
+        }
+
+        // 键盘和虚拟键盘走同一条提交路径：伪造一次「点了这个键」交给同一个处理函数，
+        // 判题、上锁、上报都还是原来那段逻辑，不复制第二份
+        function pressKey(action) {
+            handleKeyAction({ target: { closest: () => ({ dataset: { action } }) } });
+        }
 
         // ---------- 启动：先确认登录，再出题 ----------
         function showBootError(err) {
@@ -597,12 +840,14 @@
 
         try {
             initThemeToggle();
+            initProgressEl();
 
-            if (typeof katex === 'undefined') {
-                console.warn('[poly-drill] KaTeX 未加载，已改用纯文本排版');
-            }
-            if (typeof math === 'undefined') {
-                console.warn('[poly-drill] mathjs 未加载，题目无法正常生成');
+            // 缺文件时先把话说明白：这一步比后面的出题重要，
+            // 因为学生看到「页面空白」只会以为是自己网卡了，永远不会去按 F12
+            const envProblem = assertEnv();
+            if (envProblem) {
+                showFatalError('页面缺少必要文件：' + envProblem + '。请按 Ctrl+F5 强制刷新；仍然不行请联系老师。');
+                return;
             }
 
             const me = await fetchMe();
@@ -623,11 +868,6 @@
             }
 
             loadQuestion(DEFAULT_LEVEL);
-
-            if (typeof math === 'undefined') {
-                fbEl.textContent = '题库未加载，请刷新页面（Ctrl+F5）';
-                fbEl.style.color = 'var(--danger)';
-            }
         } catch (err) {
             console.error('[poly-drill] 初始化失败:', err);
             showBootError(err);
