@@ -15,10 +15,15 @@ venv/
 pytest-of-*/
 pytest-of-*/
 
-# 本地运行时数据（内含测试账号，不入库）
+# 本地运行时数据（内含真实账号数据，不入库）
 data/*.db
 data/*.db-*
 data/*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+db.json
+migration-out/
 
 # 环境与编辑器
 .env
