@@ -8,14 +8,15 @@ from pydantic import BaseModel
 
 from app.auth import require_user
 from app.db import get_conn
-from app.engines import simplify as simplify_engine
+from app.engines import equation, simplify
 from app.engines.types import Question
 
 router = APIRouter(prefix="/api/drill", tags=["drill"])
 
 # 后续阶段只需在这里注册 equation / arithmetic
 ENGINES = {
-    "simplify": simplify_engine,
+    "simplify": simplify,
+    "equation": equation,
 }
 
 MAX_CACHE_SIZE = 2000

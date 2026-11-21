@@ -41,7 +41,9 @@ def equation_page(request: Request, user=Depends(get_current_user)):
     if not user:
         return RedirectResponse(url="/", status_code=302)
     return templates.TemplateResponse(
-        request, "placeholder.html", _ctx(user, "equation", page_title="一元一次方程")
+        request, 
+        "equation.html", 
+        _ctx(user, "equation", page_title="一元一次方程", topic="equation"),
     )
 
 
