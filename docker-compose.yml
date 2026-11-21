@@ -4,7 +4,7 @@ services:
     container_name: math-tutor
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "${APP_PORT:-8000}:8000"
     environment:
       - TEACHER_INVITE=${TEACHER_INVITE:-change_me_invite}
       - DB_PATH=/data/math_tutor.db
