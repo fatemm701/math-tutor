@@ -64,5 +64,7 @@ def dashboard_page(request: Request, user=Depends(get_current_user)):
         return RedirectResponse(url="/", status_code=302)
     title = "教师看板" if user["role"] == "teacher" else "我的看板"
     return templates.TemplateResponse(
-        request, "placeholder.html", _ctx(user, "dashboard", page_title=title)
+        request, 
+        "dashboard.html", 
+        _ctx(user, "dashboard", page_title=title)
     )

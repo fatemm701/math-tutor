@@ -1,0 +1,14 @@
+services:
+  math-tutor:
+    build: .
+    container_name: math-tutor
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - TEACHER_INVITE=${TEACHER_INVITE:-change_me_invite}
+      - DB_PATH=/data/math_tutor.db
+    volumes:
+      - ./data:/data
+    mem_limit: 256m
+    memswap_limit: 256m

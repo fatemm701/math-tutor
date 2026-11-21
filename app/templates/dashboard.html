@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}数据看板 - Poly-Drill{% endblock %}
+
+{% block content %}
+<div class="dash-wrap" data-role="{{ user.role }}">
+    <div class="dash-header">
+        <h1>{% if user.role == 'teacher' %}教师看板{% else %}我的练习记录{% endif %}</h1>
+        <div class="dash-filters">
+            <select id="dash-days">
+                <option value="7">近 7 天</option>
+                <option value="30" selected>近 30 天</option>
+                <option value="0">全部时间</option>
+            </select>
+            <label class="dash-check">
+                <input type="checkbox" id="dash-only-wrong"> 仅看错题
+            </label>
+        </div>
+    </div>
+
+    {% if user.role == 'teacher' %}
+    <div class="dash-card" id="teacher-invite-bar">
+        <span>我的班级邀请码：</span>
+        <strong id="invite-code-val">加载中...</strong>
+    </div>
+
+    <div class="dash-card">
+        <h2>学生列表</h2>
+        <table class="dash-table">
+            <thead>
+                <tr>
+                    <th>姓名</th>
+                    <th>做题数</th>
+                    <th>正确率</th>
+                    <th>看解析</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="student-list-body">
+                <tr>
+                    <td colspan="5">加载中...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <div id="detail-panel">
+        <h2 id="detail-title">{% if user.role == 'teacher' %}我的个人数据{% else %}学习概览{% endif %}</h2>
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-label">总题数</div>
+                <div class="kpi-val" id="kpi-total">-</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">正确率</div>
+                <div class="kpi-val" id="kpi-acc">-</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">看解析</div>
+                <div class="kpi-val" id="kpi-giveup">-</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">平均用时</div>
+                <div class="kpi-val" id="kpi-ms">-</div>
+            </div>
+        </div>
+
+        <div class="dash-card">
+            <h3>各题型与难度分布</h3>
+            <table class="dash-table">
+                <thead>
+                    <tr>
+                        <th>题型</th>
+                        <th>难度</th>
+                        <th>题数</th>
+                        <th>正确率</th>
+                        <th>看解析</th>
+                    </tr>
+                </thead>
+                <tbody id="breakdown-body"></tbody>
+            </table>
+        </div>
+
+        <div class="dash-card">
+            <h3>最近记录</h3>
+            <table class="dash-table">
+                <thead>
+                    <tr>
+                        <th>题型</th>
+                        <th>题目</th>
+                        <th>标准答案</th>
+                        <th>作答</th>
+                        <th>结果</th>
+                    </tr>
+                </thead>
+                <tbody id="recent-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    (() => {
+        const TOPIC_NAME = { simplify: '整式化简', equation: '一元一次方程', arithmetic: '口算训练' };
+        const RES_NAME = {
+            correct: '正确', wrong: '错误', parentheses: '未去括号',
+            unmerged: '未合并同类项', unisolated: '未化系数为1', unreduced: '未约分'
+        };
+        const role = document.querySelector('.dash-wrap').dataset.role;
+        const daysEl = document.getElementById('dash-days');
+        const wrongEl = document.getElementById('dash-only-wrong');
+        let activeStudentId = null;
+
+        function renderSummary(s) {
+            document.getElementById('kpi-total').textContent = s.total;
+            document.getElementById('kpi-acc').textContent = s.accuracy + '%';
+            document.getElementById('kpi-giveup').textContent = s.gave_up;
+            document.getElementById('kpi-ms').textContent = s.avg_ms ? (s.avg_ms / 1000).toFixed(1) + 's' : '-';
+
+            const tbody = document.getElementById('breakdown-body');
+            tbody.innerHTML = s.by_topic_level.length
+                ? s.by_topic_level.map(r => `
+          <tr>
+            <td>${TOPIC_NAME[r.topic] || r.topic}</td>
+            <td>L${r.level}</td>
+            <td>${r.total}</td>
+            <td>${r.accuracy}%</td>
+            <td>${r.gave_up}</td>
+          </tr>`).join('')
+                : '<tr><td colspan="5">暂无数据</td></tr>';
+        }
+
+        function renderRecent(rows) {
+            const tbody = document.getElementById('recent-body');
+            tbody.innerHTML = rows.length
+                ? rows.map(r => `
+          <tr>
+            <td>${TOPIC_NAME[r.topic] || r.topic} L${r.level}</td>
+            <td><code>${r.question}</code></td>
+            <td><code>${r.answer}</code></td>
+            <td><code>${r.student_answer || (r.gave_up ? '(看解析)' : '-')}</code></td>
+            <td>${RES_NAME[r.result] || r.result}</td>
+          </tr>`).join('')
+                : '<tr><td colspan="5">暂无记录</td></tr>';
+        }
+
+        async function loadMe() {
+            const days = daysEl.value;
+            const onlyWrong = wrongEl.checked;
+            const [sRes, rRes] = await Promise.all([
+                fetch(`/api/attempts/me/summary?days=${days}`).then(r => r.json()),
+                fetch(`/api/attempts/me/recent?only_wrong=${onlyWrong}`).then(r => r.json()),
+            ]);
+            if (sRes.success) renderSummary(sRes.data);
+            if (rRes.success) renderRecent(rRes.data);
+        }
+
+        async function loadTeacherStudents() {
+            const res = await fetch(`/api/teacher/students?days=${daysEl.value}`).then(r => r.json());
+            if (!res.success) return;
+            document.getElementById('invite-code-val').textContent = res.data.invite_code || '无';
+            const tbody = document.getElementById('student-list-body');
+            tbody.innerHTML = res.data.students.length
+                ? res.data.students.map(s => `
+          <tr>
+            <td>${s.name}</td>
+            <td>${s.total}</td>
+            <td>${s.accuracy}%</td>
+            <td>${s.gave_up}</td>
+            <td><button type="button" class="btn-sm" data-sid="${s.id}">查看详情</button></td>
+          </tr>`).join('')
+                : '<tr><td colspan="5">暂无绑定学生</td></tr>';
+
+            tbody.querySelectorAll('button[data-sid]').forEach(btn => {
+                btn.addEventListener('click', () => loadStudentDetail(btn.dataset.sid));
+            });
+        }
+
+        async function loadStudentDetail(sid) {
+            activeStudentId = sid;
+            const res = await fetch(
+                `/api/teacher/students/${sid}?days=${daysEl.value}&only_wrong=${wrongEl.checked}`
+            ).then(r => r.json());
+            if (!res.success) return;
+            document.getElementById('detail-title').textContent = `学生详情：${res.data.student.name}`;
+            renderSummary(res.data.summary);
+            renderRecent(res.data.recent);
+        }
+
+        function refresh() {
+            if (role === 'teacher') {
+                loadTeacherStudents();
+                if (activeStudentId) loadStudentDetail(activeStudentId);
+                else loadMe();
+            } else {
+                loadMe();
+            }
+        }
+
+        daysEl.addEventListener('change', refresh);
+        wrongEl.addEventListener('change', refresh);
+        refresh();
+    })();
+</script>
+{% endblock %}

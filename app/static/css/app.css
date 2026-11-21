@@ -327,228 +327,392 @@ body {
         padding: 16px;
     } }
 
-        /* ---------- 练习页 ---------- */
-        .drill-container {
-            max-width: 720px;
-            margin: 0 auto;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-    
-        .drill-header {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-        }
-    
-        .drill-title {
-            margin: 0;
-            font-size: 20px;
-        }
-    
-        .level-bar {
-            display: flex;
-            gap: 6px;
-            flex-wrap: wrap;
-        }
-    
-        .level-btn {
-            padding: 6px 12px;
-            border: 1px solid var(--border);
-            border-radius: 999px;
-            background: var(--surface);
-            color: var(--text);
-            font-size: 13px;
-            cursor: pointer;
-        }
-    
-        .level-btn.is-active {
-            background: var(--accent);
-            color: #fff;
-            border-color: var(--accent);
-        }
-    
-        .question-meta {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 12px;
-        }
-    
-        .badge {
-            font-size: 12px;
-            padding: 2px 8px;
-            border-radius: 6px;
-            background: var(--accent-bg);
-            color: var(--accent);
-        }
-    
-        .badge-frac {
-            background: rgba(217, 119, 6, 0.14);
-            color: #d97706;
-        }
-    
-        .question-prompt {
-            font-size: 22px;
-            min-height: 48px;
-            padding: 8px 0;
-            overflow-x: auto;
-        }
-    
-        .input-row {
-            display: flex;
-            gap: 10px;
-        }
-    
-        .answer-input {
-            flex: 1;
-            padding: 10px 14px;
-            font-size: 17px;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            background: var(--bg);
-            color: var(--text);
-        }
-    
-        .action-row {
-            display: flex;
-            gap: 8px;
-            margin-top: 12px;
-            flex-wrap: wrap;
-        }
-    
-        .btn-ghost,
-        .btn-secondary {
-            padding: 8px 14px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            background: var(--surface);
-            color: var(--text);
-            font-size: 14px;
-            cursor: pointer;
-        }
-    
-        .btn-secondary {
-            margin-left: auto;
-            background: var(--accent-bg);
-            color: var(--accent);
-            border-color: transparent;
-        }
-    
-        .hint-box {
-            margin-top: 12px;
-            padding: 10px 12px;
-            border-radius: 8px;
-            background: var(--accent-bg);
-            font-size: 14px;
-        }
-    
-        .feedback-box {
-            margin-top: 12px;
-            padding: 10px 12px;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 500;
-        }
-    
-        .feedback-box.is-ok {
-            background: rgba(22, 163, 74, 0.14);
-            color: #16a34a;
-        }
-    
-        .feedback-box.is-warn {
-            background: rgba(217, 119, 6, 0.14);
-            color: #d97706;
-        }
-    
-        .feedback-box.is-error {
-            background: rgba(220, 38, 38, 0.14);
-            color: var(--danger);
-        }
-    
-        /* 软键盘 */
-        .soft-keyboard {
-            margin-top: 14px;
-        }
-    
-        .kb-grid {
-            display: grid;
-            grid-template-columns: repeat(6, 1fr);
-            gap: 8px;
-        }
-    
-        .kb-key {
-            height: 44px;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            background: var(--bg);
-            color: var(--text);
-            font-size: 17px;
-            cursor: pointer;
-        }
-    
-        .kb-key:active {
-            opacity: 0.7;
-        }
-    
-        .kb-key:disabled {
-            opacity: 0.45;
-            cursor: not-allowed;
-        }
-    
-        .kb-key.key-var {
-            font-family: "Times New Roman", Georgia, serif;
-            font-style: italic;
-            font-weight: 600;
-            font-size: 19px;
-        }
-    
-        .kb-key.kb-action {
-            font-size: 14px;
-            color: var(--muted);
-        }
-    
-        /* 分步解析（竖排防安卓横向滚动条异常） */
-        .steps-heading {
-            margin: 0 0 12px;
-            font-size: 16px;
-        }
-    
-        .your-answer-row {
-            margin-bottom: 12px;
-            font-size: 14px;
-        }
-    
-        .steps-list {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-    
-        .step-item {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            padding: 12px;
-            border-radius: 8px;
-            background: var(--bg);
-            border: 1px solid var(--border);
-        }
-    
-        .step-title {
-            font-weight: 600;
-            font-size: 14px;
-            color: var(--accent);
-        }
-    
-        .step-formula {
-            font-size: 18px;
-            word-break: break-word;
-        }
-    
-        .step-note {
-            font-size: 13px;
-            color: var(--muted);
-            line-height: 1.5; }
+/* ---------- 练习页 ---------- */
+.drill-container {
+    max-width: 720px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.drill-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.drill-title {
+    margin: 0;
+    font-size: 20px;
+}
+
+.level-bar {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.level-btn {
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.level-btn.is-active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+
+.question-meta {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.badge {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: var(--accent-bg);
+    color: var(--accent);
+}
+
+.badge-frac {
+    background: rgba(217, 119, 6, 0.14);
+    color: #d97706;
+}
+
+.question-prompt {
+    font-size: 22px;
+    min-height: 48px;
+    padding: 8px 0;
+    overflow-x: auto;
+}
+
+.input-row {
+    display: flex;
+    gap: 10px;
+}
+
+.answer-input {
+    flex: 1;
+    padding: 10px 14px;
+    font-size: 17px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+}
+
+.action-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+}
+
+.btn-ghost,
+.btn-secondary {
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.btn-secondary {
+    margin-left: auto;
+    background: var(--accent-bg);
+    color: var(--accent);
+    border-color: transparent;
+}
+
+.hint-box {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: var(--accent-bg);
+    font-size: 14px;
+}
+
+.feedback-box {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.feedback-box.is-ok {
+    background: rgba(22, 163, 74, 0.14);
+    color: #16a34a;
+}
+
+.feedback-box.is-warn {
+    background: rgba(217, 119, 6, 0.14);
+    color: #d97706;
+}
+
+.feedback-box.is-error {
+    background: rgba(220, 38, 38, 0.14);
+    color: var(--danger);
+}
+
+/* 软键盘 */
+.soft-keyboard {
+    margin-top: 14px;
+}
+
+.kb-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+}
+
+.kb-key {
+    height: 44px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 17px;
+    cursor: pointer;
+}
+
+.kb-key:active {
+    opacity: 0.7;
+}
+
+.kb-key:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.kb-key.key-var {
+    font-family: "Times New Roman", Georgia, serif;
+    font-style: italic;
+    font-weight: 600;
+    font-size: 19px;
+}
+
+.kb-key.kb-action {
+    font-size: 14px;
+    color: var(--muted);
+}
+
+/* 分步解析（竖排防安卓横向滚动条异常） */
+.steps-heading {
+    margin: 0 0 12px;
+    font-size: 16px;
+}
+
+.your-answer-row {
+    margin-bottom: 12px;
+    font-size: 14px;
+}
+
+.steps-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.step-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px;
+    border-radius: 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+}
+
+.step-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--accent);
+}
+
+.step-formula {
+    font-size: 18px;
+    word-break: break-word;
+}
+
+.step-note {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.5; }
+
+/* ========== 数据看板 (dashboard.html) ========== */
+.dash-wrap {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 20px 16px 48px;
+}
+
+.dash-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.dash-header h1 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.dash-filters {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.dash-filters select {
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border, rgba(128, 128, 128, 0.3));
+    background: var(--card-bg, transparent);
+    color: inherit;
+    font-size: 0.9rem;
+}
+
+.dash-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+.dash-card {
+    background: var(--card-bg, rgba(128, 128, 128, 0.06));
+    border: 1px solid var(--border, rgba(128, 128, 128, 0.2));
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 18px;
+    overflow-x: auto;
+}
+
+.dash-card h2,
+.dash-card h3 {
+    margin: 0 0 12px;
+    font-size: 1.05rem;
+}
+
+#teacher-invite-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.95rem;
+}
+
+#invite-code-val {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 1.1rem;
+    letter-spacing: 2px;
+    padding: 3px 10px;
+    border-radius: 6px;
+    background: rgba(59, 130, 246, 0.14);
+    color: #3b82f6;
+}
+
+#detail-title {
+    margin: 24px 0 12px;
+    font-size: 1.2rem;
+}
+
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+.kpi-card {
+    background: var(--card-bg, rgba(128, 128, 128, 0.06));
+    border: 1px solid var(--border, rgba(128, 128, 128, 0.2));
+    border-radius: 10px;
+    padding: 14px 16px;
+}
+
+.kpi-label {
+    font-size: 0.82rem;
+    opacity: 0.7;
+    margin-bottom: 6px;
+}
+
+.kpi-val {
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.dash-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.dash-table th,
+.dash-table td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border, rgba(128, 128, 128, 0.16));
+    white-space: nowrap;
+}
+
+.dash-table th {
+    font-weight: 600;
+    opacity: 0.75;
+    font-size: 0.85rem;
+}
+
+.dash-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.dash-table tbody tr:hover {
+    background: rgba(128, 128, 128, 0.06);
+}
+
+.dash-table code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.88rem;
+    padding: 2px 5px;
+    border-radius: 4px;
+    background: rgba(128, 128, 128, 0.12);
+}
+
+.btn-sm {
+    padding: 4px 10px;
+    font-size: 0.82rem;
+    border-radius: 6px;
+    border: 1px solid #3b82f6;
+    background: transparent;
+    color: #3b82f6;
+    cursor: pointer;
+}
+
+.btn-sm:hover {
+    background: #3b82f6;
+    color: #fff;
+}
+
+@media (max-width: 640px) {
+    .kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }           }
