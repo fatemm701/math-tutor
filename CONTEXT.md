@@ -1,5 +1,5 @@
 
-# poly-drill-py 项目上下文契约 (CONTEXT.md)
+# math-tutor 项目上下文契约 (CONTEXT.md)
 
 ## 1. 项目定位与硬性约束（不变量）
 
@@ -19,7 +19,7 @@
 ## 2. 目录结构
 
 ```text
-poly-drill-py/
+math-tutor/
 ├── CONTEXT.md                  # 本文件（全局契约与进度）
 ├── pyproject.toml              # 依赖与 pytest 配置
 ├── Dockerfile / docker-compose.yml
