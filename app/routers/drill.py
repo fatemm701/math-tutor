@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from app.auth import require_user
 from app.db import get_conn
-from app.engines import equation, simplify
+from app.engines import equation, simplify, arithmetic
 from app.engines.types import Question
 
 router = APIRouter(prefix="/api/drill", tags=["drill"])
@@ -17,6 +17,7 @@ router = APIRouter(prefix="/api/drill", tags=["drill"])
 ENGINES = {
     "simplify": simplify,
     "equation": equation,
+    "arithmetic": arithmetic,
 }
 
 MAX_CACHE_SIZE = 2000

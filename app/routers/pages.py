@@ -52,7 +52,9 @@ def arithmetic_page(request: Request, user=Depends(get_current_user)):
     if not user:
         return RedirectResponse(url="/", status_code=302)
     return templates.TemplateResponse(
-        request, "placeholder.html", _ctx(user, "arithmetic", page_title="口算训练")
+        request, 
+        "arithmetic.html", 
+        _ctx(user, "arithmetic", page_title="口算训练", topic="arithmetic"),
     )
 
 
