@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}Poly-Drill{% endblock %}</title>
+    <script>
+        (function () {
+            try {
+                if (localStorage.getItem("pd_theme") === "dark") {
+                    document.documentElement.setAttribute("data-theme", "dark");
+                }
+            } catch (_) { }
+        })();
+    </script>
+    <link rel="stylesheet" href="/static/css/app.css?v={{ app_version }}" />
+    {% block head_extra %}{% endblock %}
+</head>
+
+<body>
+    <!-- 窄屏顶部栏 -->
+    <header class="mobile-bar">
+        <button class="icon-btn" id="mobile-menu-btn" aria-label="打开菜单">☰</button>
+        <span class="mobile-title">Poly-Drill</span>
+    </header>
+
+    <div class="nav-backdrop" id="nav-backdrop"></div>
+
+    <div class="app-shell">
+        <aside class="sidebar" id="sidebar" aria-label="主导航">
+            <div class="sidebar-top">
+                <span class="brand-text">Poly-Drill</span>
+                <button class="icon-btn" id="sidebar-toggle" aria-label="收起或展开侧边栏">☰</button>
+            </div>
+
+            <nav class="nav-list">
+                <!-- 可折叠「练习」分组 -->
+                <div class="nav-group" id="nav-group-practice">
+                    <button class="nav-group-header" id="practice-group-toggle" type="button" aria-expanded="true">
+                        <span class="nav-icon">✏️</span>
+                        <span class="nav-label">练习</span>
+                        <span class="nav-caret">▾</span>
+                    </button>
+                    <div class="nav-group-items">
+                        <a href="{{ '/simplify' if user else '#' }}" class="nav-item {{ 'is-disabled' if not user }}" {%
+                            if active_nav=='simplify' %}aria-current="page" {% endif %}>
+                            <span class="nav-icon">𝑥</span>
+                            <span class="nav-label">整式化简</span>
+                        </a>
+                        <a href="{{ '/equation' if user else '#' }}" class="nav-item {{ 'is-disabled' if not user }}" {%
+                            if active_nav=='equation' %}aria-current="page" {% endif %}>
+                            <span class="nav-icon">＝</span>
+                            <span class="nav-label">一元一次方程</span>
+                        </a>
+                        <a href="{{ '/arithmetic' if user else '#' }}" class="nav-item {{ 'is-disabled' if not user }}"
+                            {% if active_nav=='arithmetic' %}aria-current="page" {% endif %}>
+                            <span class="nav-icon">±</span>
+                            <span class="nav-label">口算训练</span>
+                        </a>
+                    </div>
+                </div>
+
+                {% if user %}
+                <a href="/dashboard" class="nav-item" {% if active_nav=='dashboard' %}aria-current="page" {% endif %}>
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-label">{{ '看板' if user.role == 'teacher' else '我的看板' }}</span>
+                </a>
+                {% endif %}
+            </nav>
+
+            <div class="sidebar-bottom">
+                <button class="nav-item nav-btn" id="theme-toggle" type="button">
+                    <span class="nav-icon">🌙</span>
+                    <span class="nav-label">夜间模式</span>
+                </button>
+
+                {% if user %}
+                <div class="user-box">
+                    <span class="nav-icon">👤</span>
+                    <span class="nav-label user-name" title="{{ user.name }}">{{ user.name }}</span>
+                </div>
+                <button class="nav-item nav-btn" id="logout-btn" type="button">
+                    <span class="nav-icon">↪</span>
+                    <span class="nav-label">退出登录</span>
+                </button>
+                {% else %}
+                <a href="/" class="nav-item" {% if active_nav=='login' %}aria-current="page" {% endif %}>
+                    <span class="nav-icon">🔑</span>
+                    <span class="nav-label">登录</span>
+                </a>
+                {% endif %}
+            </div>
+        </aside>
+
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <script src="/static/js/nav.js?v={{ app_version }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+
+</html>

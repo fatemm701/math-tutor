@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title }} - Poly-Drill{% endblock %}
+{% block content %}
+<div class="card">
+    <h2>{{ page_title }}</h2>
+    <p class="muted">当前登录：{{ user.name }}（{{ '教师' if user.role == 'teacher' else '学生' }}）</p>
+    {% if user.invite_code %}
+    <p>你的学生邀请码：<strong>{{ user.invite_code }}</strong></p>
+    {% endif %}
+    <p class="muted">该模块将在后续阶段接入。</p>
+</div>
+{% endblock %}

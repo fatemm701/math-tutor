@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}登录 / 注册 - Poly-Drill{% endblock %}
+
+{% block content %}
+<div class="auth-wrap">
+    <div class="card auth-card">
+        <div class="auth-tabs">
+            <button type="button" class="tab-btn is-active" data-tab="login">登录</button>
+            <button type="button" class="tab-btn" data-tab="register">注册</button>
+        </div>
+
+        <div id="auth-error" class="alert-error" hidden></div>
+
+        <!-- 登录表单 -->
+        <form id="login-form" class="auth-form">
+            <label class="field">
+                <span>用户名</span>
+                <input type="text" name="name" required autocomplete="username" />
+            </label>
+            <label class="field">
+                <span>密码</span>
+                <input type="password" name="password" required autocomplete="current-password" />
+            </label>
+            <button type="submit" class="btn-primary">登录</button>
+        </form>
+
+        <!-- 注册表单 -->
+        <form id="register-form" class="auth-form" hidden>
+            <div class="role-row">
+                <label><input type="radio" name="role" value="student" checked /> 学生</label>
+                <label><input type="radio" name="role" value="teacher" /> 老师</label>
+            </div>
+            <label class="field">
+                <span>用户名（2~20 字）</span>
+                <input type="text" name="name" required minlength="2" maxlength="20" />
+            </label>
+            <label class="field">
+                <span>密码（至少 4 位）</span>
+                <input type="password" name="password" required minlength="4" />
+            </label>
+            <label class="field" id="field-invite-code">
+                <span>老师邀请码（选填）</span>
+                <input type="text" name="inviteCode" maxlength="6" placeholder="6 位邀请码" />
+            </label>
+            <label class="field" id="field-teacher-invite" hidden>
+                <span>管理员口令（必填）</span>
+                <input type="password" name="teacherInvite" placeholder="服务端配置的口令" />
+            </label>
+            <button type="submit" class="btn-primary">注册并登录</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        const errBox = document.getElementById("auth-error");
+        const loginForm = document.getElementById("login-form");
+        const regForm = document.getElementById("register-form");
+        const fieldInvite = document.getElementById("field-invite-code");
+        const fieldTeacher = document.getElementById("field-teacher-invite");
+
+        function showError(msg) {
+            errBox.textContent = msg;
+            errBox.hidden = !msg;
+        }
+
+        document.querySelectorAll(".tab-btn").forEach((btn) => {
+            btn.addEventListener("click", () => {
+                document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("is-active"));
+                btn.classList.add("is-active");
+                const isLogin = btn.dataset.tab === "login";
+                loginForm.hidden = !isLogin;
+                regForm.hidden = isLogin;
+                showError("");
+            });
+        });
+
+        regForm.querySelectorAll('input[name="role"]').forEach((radio) => {
+            radio.addEventListener("change", () => {
+                const isTeacher = radio.value === "teacher";
+                fieldInvite.hidden = isTeacher;
+                fieldTeacher.hidden = !isTeacher;
+            });
+        });
+
+        async function submitJson(url, payload) {
+            showError("");
+            const res = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (!data.success) {
+                showError(data.msg || "操作失败");
+                return;
+            }
+            window.location.href = "/simplify";
+        }
+
+        loginForm.addEventListener("submit", (e) => {
+            e.preventDefault();
+            const fd = new FormData(loginForm);
+            submitJson("/api/auth/login", Object.fromEntries(fd));
+        });
+
+        regForm.addEventListener("submit", (e) => {
+            e.preventDefault();
+            const fd = new FormData(regForm);
+            submitJson("/api/auth/register", Object.fromEntries(fd));
+        });
+    })();
+</script>
+{% endblock %}
