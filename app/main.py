@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from app.db import init_db
 from app.routers import auth as auth_router
 from app.routers import pages as pages_router
+from app.routers import drill as drill_router
 
 
 @asynccontextmanager
@@ -19,6 +20,7 @@ app = FastAPI(title="poly-drill", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(auth_router.router)
 app.include_router(pages_router.router)
+app.include_router(drill_router.router)
 
 
 @app.exception_handler(HTTPException)

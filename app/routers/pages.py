@@ -30,7 +30,9 @@ def simplify_page(request: Request, user=Depends(get_current_user)):
     if not user:
         return RedirectResponse(url="/", status_code=302)
     return templates.TemplateResponse(
-        request, "placeholder.html", _ctx(user, "simplify", page_title="整式化简")
+        request,
+        "simplify.html",
+        _ctx(user, "simplify", page_title="整式化简", topic="simplify"),
     )
 
 

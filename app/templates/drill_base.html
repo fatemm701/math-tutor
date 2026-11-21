@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/vendor/katex/katex.min.css" />
+<script defer src="/static/vendor/katex/katex.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="drill-container" id="drill-app" data-topic="{{ topic }}">
+    <div class="drill-header">
+        <h2 class="drill-title">{{ page_title }}</h2>
+        <div class="level-bar" id="level-bar" role="tablist">
+            <button type="button" class="level-btn is-active" data-level="1">① 入门</button>
+            <button type="button" class="level-btn" data-level="2">② 基础</button>
+            <button type="button" class="level-btn" data-level="3">③ 进阶</button>
+            <button type="button" class="level-btn" data-level="4">④ 挑战</button>
+        </div>
+    </div>
+
+    <!-- 题目卡片 -->
+    <section class="card question-card">
+        <div class="question-meta">
+            <span class="badge" id="badge-level">① 入门</span>
+            <span class="badge badge-frac" id="badge-frac" hidden>分数</span>
+        </div>
+        <div class="question-prompt" id="question-prompt">加载中...</div>
+    </section>
+
+    <!-- 输入与操作区 -->
+    <section class="card input-card">
+        <div class="input-row">
+            <input type="text" id="answer-input" class="answer-input" placeholder="输入答案，或使用下方软键盘" autocomplete="off"
+                autocapitalize="off" spellcheck="false" />
+            <button type="button" class="btn-primary" id="btn-submit">提交</button>
+        </div>
+
+        <div class="action-row">
+            <button type="button" class="btn-ghost" id="btn-hint">💡 提示</button>
+            <button type="button" class="btn-ghost" id="btn-giveup">📖 看解析</button>
+            <button type="button" class="btn-secondary" id="btn-next">下一题 →</button>
+        </div>
+
+        <div class="hint-box" id="hint-box" hidden></div>
+        <div class="feedback-box" id="feedback-box" hidden></div>
+
+        <!-- 软键盘插槽 -->
+        <div class="soft-keyboard" id="soft-keyboard">
+            {% block keyboard %}{% endblock %}
+        </div>
+    </section>
+
+    <!-- 分步解析区（手机端竖排，无横向滚动） -->
+    <section class="card steps-card" id="steps-card" hidden>
+        <h3 class="steps-heading">完整解析</h3>
+        <div class="your-answer-row" id="your-answer-row" hidden>
+            <span class="muted">你的答案：</span>
+            <span id="your-answer-tex"></span>
+        </div>
+        <div class="steps-list" id="steps-list"></div>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/drill.js?v={{ app_version }}"></script>
+{% endblock %}
