@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 Topic = Literal["simplify", "equation", "arithmetic"]
 ResultCode = Literal[
@@ -12,34 +12,33 @@ ResultCode = Literal[
     "error",        # 语法/格式错误
 ]
 
+
 @dataclass(frozen=True)
 class Step:
-    title: str              # 步骤标题，如「去分母」「合并同类项」
-    tex: str                # 该步算式的 KaTeX 字符串
-    note: str = ""          # 中文讲解
-    note_tex: str = ""      # 讲解中含算式/乘方/分数时的 KaTeX 片段（移动端竖排用）
+    title: str
+    tex: str
+    note: str = ""
+    note_tex: str = ""
+
 
 @dataclass(frozen=True)
 class Question:
     topic: Topic
-    level: int              # 1..4
-    prompt_raw: str         # 纯文本题面（存档用）
-    prompt_tex: str         # KaTeX 题面（渲染用）
-    answer_raw: str         # 标准答案纯文本（存档/比对用）
-    answer_tex: str         # 标准答案 KaTeX
-    hint: str               # 按题面结构生成的提示语
-    steps: list[Step]       # 完整分步解析
+    level: int
+    prompt_raw: str
+    prompt_tex: str
+    answer_raw: str
+    answer_tex: str
+    hint: str
+    steps: list[Step]
     is_fraction: bool = False
     is_decimal: bool = False
-    meta: dict = field(default_factory=dict)  # 引擎内部判题所需的只读数据
+    meta: dict[str, Any] = field(default_factory=dict)
+
 
 @dataclass(frozen=True)
 class GradeResult:
     result: ResultCode
-    is_correct: bool        # 是否判对（注意：口算 unreduced 判对但给提示；方程 unreduced/unisolated 判未完成）
-    feedback: str           # 给学生的单行反馈
-    student_tex: str = ""   # 学生答案的 KaTeX 渲染（用于对照）
-
-# 每个引擎模块必须暴露：
-# def generate(level: int, rng: random.Random | None = None) -> Question
-# def grade(question: Question, student_input: str) -> GradeResult
+    is_correct: bool
+    feedback: str
+    student_tex: str = ""
