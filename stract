@@ -1,0 +1,38 @@
+math-tutor/
+├── app/
+│   ├── main.py                 # FastAPI 入口、静态文件、异常处理
+│   ├── config.py               # 环境变量（TEACHER_INVITE、DB_PATH 等）
+│   ├── db.py                   # SQLite 连接与建表迁移
+│   ├── auth.py                 # scrypt 哈希、Session Cookie、IP 登录限速
+│   ├── scoring.py              # 统计口径与 SQL 聚合查询（老师/学生共用）
+│   ├── engines/                # 纯 Python 数学引擎（无 Web 依赖）
+│   │   ├── rational.py         # 有理数与 LaTeX 格式化工具（\dfrac 等）
+│   │   ├── expr_tree.py        # 表达式树 & 递归下降解析器（支持 x, y, ^, /, ()）
+│   │   ├── simplify.py         # 整式化简：4档出题、分步解析、多档判题、提示
+│   │   ├── equation.py         # 一元一次方程：4档出题、5步等价变形、判题
+│   │   └── arithmetic.py       # 口算训练：4档出题、简算规则、小数/分数等价判题
+│   ├── routers/
+│   │   ├── pages.py            # 页面路由（登录、化简、方程、口算、看板）
+│   │   ├── drill.py            # 出题 / 提交判题 / 获取提示接口（返回 HTML 片段或 JSON）
+│   │   ├── auth.py             # 注册 / 登录 / 登出 / me
+│   │   └── dashboard.py        # 教师看板 & 学生自查接口
+│   ├── templates/
+│   │   ├── base.html           # 公共骨架：左侧导航栏、夜间模式、KaTeX 引入
+│   │   ├── login.html
+│   │   ├── drill_base.html     # 练习页公共布局（题面、输入框、软键盘、解析区）
+│   │   ├── simplify.html       # 继承 drill_base，定制化简键盘
+│   │   ├── equation.html       # 继承 drill_base，多一个 = 键
+│   │   ├── arithmetic.html     # 继承 drill_base，纯数字运算键盘
+│   │   └── dashboard.html      # 教师看板 / 学生自查（按角色渲染不同区块）
+│   └── static/
+│       ├── css/                # app.css（含导航、夜间模式、窄屏抽屉与竖排解析）
+│       ├── js/                 # keyboard.js（软键盘 + KaTeX 预览）、nav.js
+│       └── vendor/             # 本地 KaTeX 及字体
+├── tests/
+│   ├── test_simplify.py        # 化简引擎穷举与边界测试
+│   ├── test_equation.py        # 方程引擎逐步等价性验证
+│   ├── test_arithmetic.py      # 口算引擎范围、简算、小数/分数显示测试
+│   └── test_api.py             # 认证、越权防护、看板统计测试
+├── Dockerfile
+├── docker-compose.yml
+└── pyproject.toml
