@@ -17,7 +17,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="poly-drill", lifespan=lifespan)
+app = FastAPI(title="math-tutor", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(auth_router.router)
 app.include_router(pages_router.router)
