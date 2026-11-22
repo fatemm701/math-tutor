@@ -3,51 +3,66 @@
 
 {% block content %}
 <div class="auth-wrap">
-    <div class="card auth-card">
-        <div class="auth-tabs">
-            <button type="button" class="tab-btn is-active" data-tab="login">登录</button>
-            <button type="button" class="tab-btn" data-tab="register">注册</button>
+    <div class="card auth-card" id="auth-card">
+        <div class="auth-tabs" role="tablist" aria-label="登录或注册">
+            <button type="button" class="tab-btn is-active" role="tab" id="tab-login" data-tab="login"
+                aria-selected="true" aria-controls="pane-login">登录</button>
+            <button type="button" class="tab-btn" role="tab" id="tab-register" data-tab="register"
+                aria-selected="false" aria-controls="pane-register">注册</button>
         </div>
 
-        <div id="auth-error" class="alert-error" hidden></div>
+        <div id="auth-error" class="alert-error" role="alert" hidden></div>
 
-        <!-- 登录表单 -->
-        <form id="login-form" class="auth-form">
-            <label class="field">
-                <span>用户名</span>
-                <input type="text" name="name" required autocomplete="username" />
-            </label>
-            <label class="field">
-                <span>密码</span>
-                <input type="password" name="password" required autocomplete="current-password" />
-            </label>
-            <button type="submit" class="btn-primary">登录</button>
-        </form>
+        <!-- 左右滑动容器：两个表单并排，切换时整轨平移 -->
+        <div class="auth-slider" id="auth-slider">
+            <div class="auth-track" id="auth-track">
+                <!-- 登录表单 -->
+                <section class="auth-pane" id="pane-login" role="tabpanel" aria-labelledby="tab-login"
+                    aria-hidden="false">
+                    <form id="login-form" class="auth-form">
+                        <label class="field">
+                            <span>用户名</span>
+                            <input type="text" name="name" required autocomplete="username" />
+                        </label>
+                        <label class="field">
+                            <span>密码</span>
+                            <input type="password" name="password" required autocomplete="current-password" />
+                        </label>
+                        <button type="submit" class="btn-primary">登录</button>
+                    </form>
+                </section>
 
-        <!-- 注册表单 -->
-        <form id="register-form" class="auth-form" hidden>
-            <div class="role-row">
-                <label><input type="radio" name="role" value="student" checked /> 学生</label>
-                <label><input type="radio" name="role" value="teacher" /> 老师</label>
+                <!-- 注册表单（初始隐藏，避免首屏闪现两个表单） -->
+                <section class="auth-pane is-hidden" id="pane-register" role="tabpanel" aria-labelledby="tab-register"
+                    aria-hidden="true">
+                    <form id="register-form" class="auth-form">
+                        <div class="role-row">
+                            <label><input type="radio" name="role" value="student" checked /> 学生</label>
+                            <label><input type="radio" name="role" value="teacher" /> 老师</label>
+                        </div>
+                        <label class="field">
+                            <span>用户名（2~20 字）</span>
+                            <input type="text" name="name" required minlength="2" maxlength="20"
+                                autocomplete="username" />
+                        </label>
+                        <label class="field">
+                            <span>密码（至少 4 位）</span>
+                            <input type="password" name="password" required minlength="4"
+                                autocomplete="new-password" />
+                        </label>
+                        <label class="field" id="field-invite-code">
+                            <span>老师邀请码（选填）</span>
+                            <input type="text" name="inviteCode" maxlength="6" placeholder="6 位邀请码" />
+                        </label>
+                        <label class="field" id="field-teacher-invite" hidden>
+                            <span>管理员口令（必填）</span>
+                            <input type="password" name="teacherInvite" placeholder="服务端配置的口令" />
+                        </label>
+                        <button type="submit" class="btn-primary">注册并登录</button>
+                    </form>
+                </section>
             </div>
-            <label class="field">
-                <span>用户名（2~20 字）</span>
-                <input type="text" name="name" required minlength="2" maxlength="20" />
-            </label>
-            <label class="field">
-                <span>密码（至少 4 位）</span>
-                <input type="password" name="password" required minlength="4" />
-            </label>
-            <label class="field" id="field-invite-code">
-                <span>老师邀请码（选填）</span>
-                <input type="text" name="inviteCode" maxlength="6" placeholder="6 位邀请码" />
-            </label>
-            <label class="field" id="field-teacher-invite" hidden>
-                <span>管理员口令（必填）</span>
-                <input type="password" name="teacherInvite" placeholder="服务端配置的口令" />
-            </label>
-            <button type="submit" class="btn-primary">注册并登录</button>
-        </form>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -55,25 +70,82 @@
 {% block scripts %}
 <script>
     (function () {
+        const card = document.getElementById("auth-card");
+        const slider = document.getElementById("auth-slider");
+        const track = document.getElementById("auth-track");
+        const tabs = Array.from(document.querySelectorAll(".tab-btn"));
         const errBox = document.getElementById("auth-error");
         const loginForm = document.getElementById("login-form");
         const regForm = document.getElementById("register-form");
+        const paneLogin = document.getElementById("pane-login");
+        const paneRegister = document.getElementById("pane-register");
         const fieldInvite = document.getElementById("field-invite-code");
         const fieldTeacher = document.getElementById("field-teacher-invite");
+
+        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+        const TRANSITION_MS = 280;
+        let settleTimer = 0;
 
         function showError(msg) {
             errBox.textContent = msg;
             errBox.hidden = !msg;
         }
 
-        document.querySelectorAll(".tab-btn").forEach((btn) => {
-            btn.addEventListener("click", () => {
-                document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("is-active"));
-                btn.classList.add("is-active");
-                const isLogin = btn.dataset.tab === "login";
-                loginForm.hidden = !isLogin;
-                regForm.hidden = isLogin;
-                showError("");
+        // 两个 pane 高度不同，把滑动容器的高度钉在当前 pane 上，避免下方留白
+        function syncHeight(activePane) {
+            slider.style.height = `${activePane.offsetHeight}px`;
+        }
+
+        function currentPane() {
+            return card.classList.contains("is-register") ? paneRegister : paneLogin;
+        }
+
+        function activate(name, focusPanel) {
+            const isLogin = name === "login";
+            card.classList.toggle("is-register", !isLogin);
+
+            tabs.forEach((t) => {
+                const on = t.dataset.tab === name;
+                t.classList.toggle("is-active", on);
+                t.setAttribute("aria-selected", on ? "true" : "false");
+                t.tabIndex = on ? 0 : -1;
+            });
+
+            // 隐藏的 pane 退出无障碍树与 Tab 序，防止焦点落进看不见的表单
+            [paneLogin, paneRegister].forEach((pane) => {
+                const visible = (pane === paneLogin) === isLogin;
+                pane.classList.toggle("is-hidden", !visible);
+                pane.setAttribute("aria-hidden", visible ? "false" : "true");
+                if ("inert" in pane) pane.inert = !visible;
+            });
+
+            syncHeight(isLogin ? paneLogin : paneRegister);
+
+            // 滑动期间两个面板都保持可见，滑完后再隐藏离开视口的那个
+            clearTimeout(settleTimer);
+            card.classList.remove("is-settled");
+            if (reduceMotion.matches) {
+                card.classList.add("is-settled");
+            } else {
+                settleTimer = setTimeout(() => card.classList.add("is-settled"), TRANSITION_MS);
+            }
+
+            showError("");
+            if (focusPanel) {
+                // 只在键盘激活标签页时移动焦点，点击时不打断输入
+                const first = (isLogin ? loginForm : regForm).querySelector("input");
+                if (first) first.focus({ preventScroll: true });
+            }
+        }
+
+        tabs.forEach((btn) => {
+            btn.addEventListener("click", () => activate(btn.dataset.tab, false));
+            btn.addEventListener("keydown", (e) => {
+                if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+                e.preventDefault();
+                const idx = tabs.indexOf(btn);
+                const next = tabs[(idx + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+                activate(next.dataset.tab, true);
             });
         });
 
@@ -82,17 +154,24 @@
                 const isTeacher = radio.value === "teacher";
                 fieldInvite.hidden = isTeacher;
                 fieldTeacher.hidden = !isTeacher;
+                syncHeight(currentPane());
             });
         });
 
         async function submitJson(url, payload) {
             showError("");
-            const res = await fetch(url, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
-            });
-            const data = await res.json();
+            let res, data;
+            try {
+                res = await fetch(url, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                data = await res.json();
+            } catch (_) {
+                showError("网络异常，请稍后重试");
+                return;
+            }
             if (!data.success) {
                 showError(data.msg || "操作失败");
                 return;
@@ -111,6 +190,11 @@
             const fd = new FormData(regForm);
             submitJson("/api/auth/register", Object.fromEntries(fd));
         });
+
+        // 初始态：登录面板可见，高度与之对齐
+        activate("login", false);
+        window.addEventListener("resize", () => syncHeight(currentPane()));
+        window.addEventListener("load", () => syncHeight(currentPane()));
     })();
 </script>
 {% endblock %}

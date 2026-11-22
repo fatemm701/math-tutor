@@ -203,6 +203,7 @@ body {
 }
 
 .auth-tabs {
+    position: relative;
     display: flex;
     gap: 8px;
     margin-bottom: 16px;
@@ -216,12 +217,72 @@ body {
     color: var(--text);
     border-radius: 8px;
     cursor: pointer;
+    font-size: 15px;
+    transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease,
+        box-shadow 0.18s ease;
+}
+
+.tab-btn:hover:not(.is-active) {
+    background: var(--accent-bg);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.tab-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
 }
 
 .tab-btn.is-active {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
+    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+}
+
+/* 登录 / 注册左右滑动切换 */
+.auth-slider {
+    position: relative;
+    overflow: hidden;
+    /* 高度由 JS 钉在当前面板上，避免切换后留下空白 */
+}
+
+.auth-track {
+    display: flex;
+    align-items: flex-start;
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform;
+}
+
+.auth-card.is-register .auth-track {
+    transform: translateX(-100%);
+}
+
+.auth-pane {
+    flex: 0 0 100%;
+    min-width: 100%;
+}
+
+.auth-pane.is-hidden {
+    pointer-events: none;
+}
+
+/* 滑动结束后（JS 在 280ms 后加 class）再隐藏看不见的面板，
+   避免滑动过程中元素突然消失；键盘/读屏仍由 inert + aria-hidden 拦截 */
+@media (prefers-reduced-motion: reduce) {
+    .auth-pane.is-hidden {
+        visibility: hidden;
+    }
+}
+
+.auth-card.is-settled .auth-pane.is-hidden {
+    visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .auth-track {
+        transition: none;
+    }
 }
 
 .auth-form {
@@ -471,26 +532,49 @@ body {
 /* 软键盘 */
 .soft-keyboard {
     margin-top: 14px;
+    /* 消除 iOS 双击缩放延迟与点击高亮 */
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
+/*
+ * 三个题型的软键盘共用一套 4 列布局，保证「1-9」在每页的物理位置完全一致：
+ *   7 8 9 ⌫ / 4 5 6 清空 / 1 2 3 − / 剩余功能键
+ */
 .kb-grid {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 8px;
 }
 
 .kb-key {
-    height: 44px;
+    height: 48px;
     border: 1px solid var(--border);
     border-radius: 8px;
     background: var(--bg);
     color: var(--text);
-    font-size: 17px;
+    font-size: 18px;
     cursor: pointer;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
 }
 
-.kb-key:active {
-    opacity: 0.7;
+.kb-key:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* 移动端 :active 表现不一致，JS 统一加 .is-pressed 做按压反馈 */
+.kb-key:active,
+.kb-key.is-pressed {
+    background: var(--accent-bg);
+    border-color: var(--accent);
+}
+
+.kb-key:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
 }
 
 .kb-key:disabled {
@@ -502,12 +586,24 @@ body {
     font-family: "Times New Roman", Georgia, serif;
     font-style: italic;
     font-weight: 600;
-    font-size: 19px;
+    font-size: 20px;
 }
 
 .kb-key.kb-action {
     font-size: 14px;
     color: var(--muted);
+}
+
+/* 窄屏：缩小间距但不减列，避免按钮被挤压成非方形 */
+@media (max-width: 360px) {
+    .kb-grid {
+        gap: 6px;
+    }
+
+    .kb-key {
+        height: 44px;
+        font-size: 17px;
+    }
 }
 
 /* 分步解析（竖排防安卓横向滚动条异常） */
@@ -716,3 +812,15 @@ body {
     .kpi-grid {
         grid-template-columns: repeat(2, 1fr);
     }           }
+
+/* ========== 全局基准 ========== */
+/* hidden 属性默认只是 UA 样式（display:none），任何 class 上的 display 都会覆盖它。
+   登录页表单、管理员口令字段等都靠 hidden 控制显隐，必须提升为强规则。 */
+[hidden] {
+    display: none !important;
+}
+
+/* 输入框里长按唤出系统键盘时不弹出文本选择/复制菜单 */
+.answer-input {
+    -webkit-touch-callout: none;
+}
