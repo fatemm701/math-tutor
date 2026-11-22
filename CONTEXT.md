@@ -63,7 +63,8 @@ math-tutor/
     ├── test_simplify.py        # ✓ 整式化简 1000 题模糊校验 + 判题全分支测试
     ├── test_equation.py        # ✓ 一元一次方程 1000 题模糊校验 + 判题全分支测试
     ├── test_arithmetic.py      # ✓ 口算 1000 题模糊校验 + 格式匹配与判题测试
-    └── test_api.py             # ✓ 练习链路与教师/学生权限隔离集成测试
+    ├── test_api.py             # ✓ 练习链路与教师/学生权限隔离集成测试
+    └── test_pages.py           # ✓ 页面渲染回归（登录切换、软键盘布局、触屏不聚焦）
 ```
 
 ## 3. SQLite 表结构 (`app/db.py`)
