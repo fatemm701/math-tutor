@@ -42,6 +42,20 @@
 
         <div class="hint-box" id="hint-box" hidden></div>
         <div class="feedback-box" id="feedback-box" hidden></div>
+        <div class="diagnosis-box" id="diagnosis-box" hidden>
+            <div class="diag-header">
+                <span class="diag-title">🔍 可能错因：<strong id="diag-label"></strong></span>
+                <span class="diag-conf" id="diag-conf"></span>
+            </div>
+            <div class="diag-detail" id="diag-detail"></div>
+            <div class="diag-alts" id="diag-alts" hidden></div>
+            <div class="diag-feedback-row" id="diag-feedback-row" hidden>
+                <span class="muted">这个推测准吗？</span>
+                <button type="button" class="diag-fb-btn" data-helpful="1">👍 猜中了</button>
+                <button type="button" class="diag-fb-btn" data-helpful="0">👎 不是这个</button>
+                <span class="diag-fb-status" id="diag-fb-status"></span>
+            </div>
+        </div>
 
         <!-- 软键盘插槽 -->
         <div class="soft-keyboard" id="soft-keyboard">

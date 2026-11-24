@@ -20,6 +20,13 @@
     const elNextBtn = document.getElementById("btn-next");
     const elHintBox = document.getElementById("hint-box");
     const elFeedback = document.getElementById("feedback-box");
+    const elDiagBox = document.getElementById("diagnosis-box");
+    const elDiagLabel = document.getElementById("diag-label");
+    const elDiagConf = document.getElementById("diag-conf");
+    const elDiagDetail = document.getElementById("diag-detail");
+    const elDiagAlts = document.getElementById("diag-alts");
+    const elDiagFbRow = document.getElementById("diag-feedback-row");
+    const elDiagFbStatus = document.getElementById("diag-fb-status");
     const elStepsCard = document.getElementById("steps-card");
     const elStepsList = document.getElementById("steps-list");
     const elYourRow = document.getElementById("your-answer-row");
@@ -36,6 +43,7 @@
         locked: false,
         startedAt: 0,
         cursor: 0,
+        diagLogId: null,
     };
 
     function newClientId() {
@@ -63,6 +71,69 @@
         elFeedback.textContent = text;
         elFeedback.className = `feedback-box is-${kind}`;
         elFeedback.hidden = false;
+    }
+
+    function hideDiagnosis() {
+        state.diagLogId = null;
+        if (!elDiagBox) return;
+        elDiagBox.hidden = true;
+    }
+
+    function renderDiagnosis(diag) {
+        if (!elDiagBox) return;
+        if (!diag) {
+            hideDiagnosis();
+            return;
+        }
+        state.diagLogId = diag.logId || null;
+        elDiagLabel.textContent = diag.label || "";
+        const pct = Math.round((diag.confidence || 0) * 100);
+        elDiagConf.textContent = `置信度 ${pct}%`;
+        elDiagDetail.textContent = diag.detail || diag.tip || "";
+
+        const alts = Array.isArray(diag.alternatives) ? diag.alternatives : [];
+        if (alts.length > 0) {
+            elDiagAlts.textContent =
+                "其他可能：" +
+                alts.map((a) => `${a.label}（${Math.round((a.confidence || 0) * 100)}%）`).join("、");
+            elDiagAlts.hidden = false;
+        } else {
+            elDiagAlts.hidden = true;
+        }
+
+        if (state.diagLogId) {
+            elDiagFbRow.hidden = false;
+            elDiagFbStatus.textContent = "";
+            elDiagFbRow.querySelectorAll(".diag-fb-btn").forEach((b) => {
+                b.disabled = false;
+                b.classList.remove("is-selected");
+            });
+        } else {
+            elDiagFbRow.hidden = true;
+        }
+        elDiagBox.hidden = false;
+    }
+
+    async function sendDiagnosisFeedback(btn, helpful) {
+        if (!state.diagLogId) return;
+        const buttons = elDiagFbRow.querySelectorAll(".diag-fb-btn");
+        buttons.forEach((b) => { b.disabled = true; });
+        try {
+            const res = await fetch("/api/drill/diagnosis/feedback", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ logId: state.diagLogId, helpful }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                btn.classList.add("is-selected");
+                elDiagFbStatus.textContent = helpful ? "已记录，感谢反馈！" : "已记录，后续会用来改进模型！";
+            } else {
+                buttons.forEach((b) => { b.disabled = false; });
+            }
+        } catch {
+            buttons.forEach((b) => { b.disabled = false; });
+        }
     }
 
     function renderSteps(steps, studentTex, studentRaw) {
@@ -111,6 +182,7 @@
     async function loadNext() {
         elHintBox.hidden = true;
         elFeedback.hidden = true;
+        hideDiagnosis();
         elStepsCard.hidden = true;
         elInput.value = "";
         state.cursor = 0;
@@ -163,6 +235,7 @@
         }
         const d = json.data;
         if (d.isCorrect) {
+            hideDiagnosis();
             showFeedback(d.feedback, "ok");
             setLocked(true);
             renderSteps(d.steps || [], "", "");
@@ -173,6 +246,7 @@
             state.wrongCount += 1;
         }
         showFeedback(d.feedback, d.result === "error" ? "warn" : "error");
+        renderDiagnosis(d.diagnosis || null);
         if (d.locked) {
             setLocked(true);
             renderSteps(d.steps || [], d.studentTex, val);
@@ -333,6 +407,14 @@
         elHintBox.textContent = `提示：${state.hint}`;
         elHintBox.hidden = false;
     });
+    if (elDiagFbRow) {
+        elDiagFbRow.addEventListener("click", (e) => {
+            const btn = e.target.closest(".diag-fb-btn");
+            if (!btn || btn.disabled) return;
+            sendDiagnosisFeedback(btn, btn.dataset.helpful === "1");
+        });
+    }
+
     elGiveUpBtn.addEventListener("click", handleGiveUp);
     elNextBtn.addEventListener("click", loadNext);
 

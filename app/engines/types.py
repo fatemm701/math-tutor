@@ -37,8 +37,26 @@ class Question:
 
 
 @dataclass(frozen=True)
+class DiagnosisAlternative:
+    code: str
+    label: str
+    confidence: float
+
+
+@dataclass(frozen=True)
+class DiagnosisResult:
+    code: str
+    label: str
+    tip: str
+    detail: str
+    confidence: float
+    alternatives: list[DiagnosisAlternative] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class GradeResult:
     result: ResultCode
     is_correct: bool
     feedback: str
     student_tex: str = ""
+    diagnosis: DiagnosisResult | None = None

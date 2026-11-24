@@ -5,6 +5,7 @@ from fractions import Fraction
 import math
 import random
 
+from app.diagnosis.predictor import diagnose_equation
 from app.engines.expr_tree import (
     BinOpNode,
     ExprNode,
@@ -47,6 +48,15 @@ class _Term:
         """返回展开后的 (x 系数, 常数项)。"""
         k = Fraction(self.outer, self.den)
         return k * self.inner_x, k * self.inner_c
+
+    def to_dict(self) -> dict[str, int | bool]:
+        return {
+            "outer": self.outer,
+            "inner_x": self.inner_x,
+            "inner_c": self.inner_c,
+            "den": self.den,
+            "is_paren": self.is_paren,
+        }
 
 
 def _fmt_linear(a: int, b: int, tex: bool = False) -> str:
@@ -408,6 +418,8 @@ def generate(level: int, rng: random.Random | None = None) -> Question:
     ans_val_tex = frac_to_tex(x0)
 
     steps = _build_steps(lhs, rhs, x0)
+    dens = [t.den for t in lhs + rhs if t.den > 1]
+    lcm_val = math.lcm(*dens) if dens else 1
     is_frac = x0.denominator > 1 or any(t.den > 1 for t in lhs + rhs)
 
     return Question(
@@ -421,7 +433,12 @@ def generate(level: int, rng: random.Random | None = None) -> Question:
         steps=steps,
         is_fraction=is_frac,
         is_decimal=False,
-        meta={"solution": ans_val_raw},
+        meta={
+            "solution": ans_val_raw,
+            "lhs": [t.to_dict() for t in lhs],
+            "rhs": [t.to_dict() for t in rhs],
+            "lcm": lcm_val,
+        },
     )
 
 
@@ -476,7 +493,12 @@ def _has_unreduced_fraction_in_node(node: ExprNode) -> bool:
     return False
 
 
-def grade(question: Question, student_input: str) -> GradeResult:
+def grade(
+    question: Question,
+    student_input: str,
+    *,
+    user_priors: dict[str, float] | None = None,
+) -> GradeResult:
     raw = student_input.strip().replace("＝", "=")
     if not raw:
         return GradeResult("error", False, "请输入你的答案。")
@@ -508,7 +530,14 @@ def grade(question: Question, student_input: str) -> GradeResult:
 
         student_x = -b / a
         if student_x != x0:
-            return GradeResult("wrong", False, "答案不正确，请检查移项、去括号或计算过程。", student_tex)
+            diag = diagnose_equation(question, student_x, user_priors=user_priors)
+            return GradeResult(
+                "wrong",
+                False,
+                "答案不正确，请检查移项、去括号或计算过程。",
+                student_tex,
+                diagnosis=diag,
+            )
 
         # 同解！检查是否已经孤立为 x = <数值> 或 <数值> = x
         val_node: ExprNode | None = None
@@ -540,7 +569,8 @@ def grade(question: Question, student_input: str) -> GradeResult:
         val, unreduced = parse_number_strict(raw)
         student_tex = frac_to_tex(val)
         if val != x0:
-            return GradeResult("wrong", False, "答案不正确，请再算一遍。", student_tex)
+            diag = diagnose_equation(question, val, user_priors=user_priors)
+            return GradeResult("wrong", False, "答案不正确，请再算一遍。", student_tex, diagnosis=diag)
         if unreduced:
             return GradeResult(
                 "unreduced",
@@ -569,4 +599,5 @@ def grade(question: Question, student_input: str) -> GradeResult:
         if _has_unreduced_fraction_in_node(node):
             return GradeResult("unreduced", False, "结果数值正确，但分数还可以继续约分。", student_tex)
         return GradeResult("unisolated", False, "数值等价，但请化简为最终的单一数值。", student_tex)
-    return GradeResult("wrong", False, "答案不正确，请再算一遍。", student_tex)
+    diag = diagnose_equation(question, val, user_priors=user_priors)
+    return GradeResult("wrong", False, "答案不正确，请再算一遍。", student_tex, diagnosis=diag)

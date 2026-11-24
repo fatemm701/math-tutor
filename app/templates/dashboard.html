@@ -54,6 +54,7 @@
             <div class="kpi-card">
                 <div class="kpi-label">正确率</div>
                 <div class="kpi-val" id="kpi-acc">-</div>
+                <div class="kpi-sub muted" id="kpi-acc-sub"></div>
             </div>
             <div class="kpi-card">
                 <div class="kpi-label">看解析</div>
@@ -79,6 +80,16 @@
                 </thead>
                 <tbody id="breakdown-body"></tbody>
             </table>
+        </div>
+
+        <div class="dash-card">
+            <div class="diag-dash-head">
+                <h3>智能错因诊断分布</h3>
+                <span class="muted diag-fb-summary" id="diag-fb-summary"></span>
+            </div>
+            <div id="diagnosis-breakdown-body" class="diag-bar-list">
+                <p class="muted">暂无错因诊断记录</p>
+            </div>
         </div>
 
         <div class="dash-card">
@@ -111,9 +122,21 @@
         const wrongEl = document.getElementById('dash-only-wrong');
         let activeStudentId = null;
 
+        function escHtml(s) {
+            return String(s ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
         function renderSummary(s) {
             document.getElementById('kpi-total').textContent = s.total;
             document.getElementById('kpi-acc').textContent = s.accuracy + '%';
+            const accSub = document.getElementById('kpi-acc-sub');
+            accSub.textContent = s.total > 0
+                ? `一次过 ${s.first_try_accuracy}% · 纠错对 ${s.corrected || 0}`
+                : '';
             document.getElementById('kpi-giveup').textContent = s.gave_up;
             document.getElementById('kpi-ms').textContent = s.avg_ms ? (s.avg_ms / 1000).toFixed(1) + 's' : '-';
 
@@ -128,19 +151,52 @@
             <td>${r.gave_up}</td>
           </tr>`).join('')
                 : '<tr><td colspan="5">暂无数据</td></tr>';
+
+            const diagList = s.diagnosis_breakdown || [];
+            const diagEl = document.getElementById('diagnosis-breakdown-body');
+            const totalDiag = diagList.reduce((acc, item) => acc + item.count, 0);
+            diagEl.innerHTML = diagList.length
+                ? diagList.map(item => {
+                    const pct = totalDiag ? Math.round(item.count * 100 / totalDiag) : 0;
+                    const corrNote = item.corrected_count > 0 ? `（含纠错对 ${item.corrected_count} 次）` : '';
+                    return `
+          <div class="diag-bar-row">
+            <div class="diag-bar-meta">
+              <span class="diag-bar-label">${escHtml(item.label)}</span>
+              <span class="muted">${item.count} 次${corrNote} · ${pct}%</span>
+            </div>
+            <div class="diag-bar-track"><div class="diag-bar-fill" style="width:${pct}%"></div></div>
+          </div>`;
+                }).join('')
+                : '<p class="muted" style="margin:0;">暂无错因诊断记录（目前支持一元一次方程）</p>';
+
+            const fb = s.diagnosis_feedback || { helpful: 0, unhelpful: 0 };
+            const fbTotal = (fb.helpful || 0) + (fb.unhelpful || 0);
+            const fbEl = document.getElementById('diag-fb-summary');
+            fbEl.textContent = fbTotal > 0
+                ? `模型反馈：👍 ${fb.helpful} / 👎 ${fb.unhelpful}（认可率 ${Math.round(fb.helpful * 100 / fbTotal)}%）`
+                : '';
         }
 
         function renderRecent(rows) {
             const tbody = document.getElementById('recent-body');
             tbody.innerHTML = rows.length
-                ? rows.map(r => `
+                ? rows.map(r => {
+                    const isCorrected = r.result === 'correct' && r.corrected;
+                    const baseRes = isCorrected ? '纠错对' : (RES_NAME[r.result] || r.result);
+                    const diagPrefix = isCorrected ? '首错：' : '';
+                    const diagTag = r.diagnosis_label
+                        ? ` <span class="diag-tag">${diagPrefix}${escHtml(r.diagnosis_label)}</span>`
+                        : '';
+                    return `
           <tr>
             <td>${TOPIC_NAME[r.topic] || r.topic} L${r.level}</td>
-            <td><code>${r.question}</code></td>
-            <td><code>${r.answer}</code></td>
-            <td><code>${r.student_answer || (r.gave_up ? '(看解析)' : '-')}</code></td>
-            <td>${RES_NAME[r.result] || r.result}</td>
-          </tr>`).join('')
+            <td><code>${escHtml(r.question)}</code></td>
+            <td><code>${escHtml(r.answer)}</code></td>
+            <td><code>${escHtml(r.student_answer || (r.gave_up ? '(看解析)' : '-'))}</code></td>
+            <td>${baseRes}${diagTag}</td>
+          </tr>`;
+                }).join('')
                 : '<tr><td colspan="5">暂无记录</td></tr>';
         }
 

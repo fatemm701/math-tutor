@@ -40,12 +40,49 @@ CREATE TABLE IF NOT EXISTS attempts (
     is_fraction    INTEGER NOT NULL DEFAULT 0,
     is_decimal     INTEGER NOT NULL DEFAULT 0,
     ms             INTEGER NOT NULL DEFAULT 0,
+    corrected      INTEGER NOT NULL DEFAULT 0,
+    diagnosis_code TEXT,
+    diagnosis_confidence REAL,
     created_at     INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS diagnosis_logs (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id      TEXT NOT NULL,
+    attempt_num    INTEGER NOT NULL DEFAULT 1,
+    user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    topic          TEXT NOT NULL,
+    level          INTEGER NOT NULL,
+    question       TEXT NOT NULL,
+    answer         TEXT NOT NULL,
+    student_answer TEXT NOT NULL,
+    meta_json      TEXT NOT NULL DEFAULT '{}',
+    predicted_code TEXT NOT NULL,
+    confidence     REAL NOT NULL,
+    feedback       INTEGER,
+    created_at     INTEGER NOT NULL,
+    UNIQUE(client_id, attempt_num)
 );
 
 CREATE INDEX IF NOT EXISTS idx_attempts_user_time ON attempts(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_attempts_filter    ON attempts(user_id, topic, level, result);
+CREATE INDEX IF NOT EXISTS idx_diag_user_time     ON diagnosis_logs(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_diag_feedback      ON diagnosis_logs(topic, feedback);
 """
+
+
+def _migrate_db(conn: sqlite3.Connection) -> None:
+    """兼容旧版数据库文件：补齐新增列。"""
+    cols = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(attempts)").fetchall()
+    }
+    if "corrected" not in cols:
+        conn.execute("ALTER TABLE attempts ADD COLUMN corrected INTEGER NOT NULL DEFAULT 0")
+    if "diagnosis_code" not in cols:
+        conn.execute("ALTER TABLE attempts ADD COLUMN diagnosis_code TEXT")
+    if "diagnosis_confidence" not in cols:
+        conn.execute("ALTER TABLE attempts ADD COLUMN diagnosis_confidence REAL")
 
 
 @contextmanager
@@ -69,3 +106,4 @@ def init_db() -> None:
     with get_conn() as conn:
         conn.execute("PRAGMA journal_mode = WAL")
         conn.executescript(SCHEMA_SQL)
+        _migrate_db(conn)
