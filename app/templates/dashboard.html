@@ -32,12 +32,13 @@
                     <th>做题数</th>
                     <th>正确率</th>
                     <th>看解析</th>
+                    <th>最近练习</th>
                     <th>操作</th>
                 </tr>
             </thead>
             <tbody id="student-list-body">
                 <tr>
-                    <td colspan="5">加载中...</td>
+                    <td colspan="6">加载中...</td>
                 </tr>
             </tbody>
         </table>
@@ -97,10 +98,12 @@
             <table class="dash-table">
                 <thead>
                     <tr>
+                        <th>时间</th>
                         <th>题型</th>
                         <th>题目</th>
                         <th>标准答案</th>
                         <th>作答</th>
+                        <th>用时</th>
                         <th>结果</th>
                     </tr>
                 </thead>
@@ -128,6 +131,20 @@
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;');
+        }
+
+        function fmtTime(sec) {
+            if (!sec) return '-';
+            const d = new Date(sec * 1000);
+            const pad = n => String(n).padStart(2, '0');
+            const shortStr = `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+            const fullStr = `${d.getFullYear()}-${shortStr}:${pad(d.getSeconds())}`;
+            return `<span title="${fullStr}">${shortStr}</span>`;
+        }
+
+        function fmtDuration(ms) {
+            if (!ms || ms <= 0) return '-';
+            return (ms / 1000).toFixed(1) + 's';
         }
 
         function renderSummary(s) {
@@ -190,14 +207,16 @@
                         : '';
                     return `
           <tr>
+            <td class="muted">${fmtTime(r.created_at)}</td>
             <td>${TOPIC_NAME[r.topic] || r.topic} L${r.level}</td>
             <td><code>${escHtml(r.question)}</code></td>
             <td><code>${escHtml(r.answer)}</code></td>
             <td><code>${escHtml(r.student_answer || (r.gave_up ? '(看解析)' : '-'))}</code></td>
+            <td class="muted">${fmtDuration(r.ms)}</td>
             <td>${baseRes}${diagTag}</td>
           </tr>`;
                 }).join('')
-                : '<tr><td colspan="5">暂无记录</td></tr>';
+                : '<tr><td colspan="7">暂无记录</td></tr>';
         }
 
         async function loadMe() {
@@ -219,13 +238,14 @@
             tbody.innerHTML = res.data.students.length
                 ? res.data.students.map(s => `
           <tr>
-            <td>${s.name}</td>
+            <td>${escHtml(s.name)}</td>
             <td>${s.total}</td>
             <td>${s.accuracy}%</td>
             <td>${s.gave_up}</td>
+            <td class="muted">${fmtTime(s.last_active_at)}</td>
             <td><button type="button" class="btn-sm" data-sid="${s.id}">查看详情</button></td>
           </tr>`).join('')
-                : '<tr><td colspan="5">暂无绑定学生</td></tr>';
+                : '<tr><td colspan="6">暂无绑定学生</td></tr>';
 
             tbody.querySelectorAll('button[data-sid]').forEach(btn => {
                 btn.addEventListener('click', () => loadStudentDetail(btn.dataset.sid));
