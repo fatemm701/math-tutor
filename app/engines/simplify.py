@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 import random
 
+from app.diagnosis.predictor import diagnose_simplify
 from app.engines.expr_tree import (
     MonoKey,
     ParseError,
@@ -260,6 +261,21 @@ def generate(level: int, rng: random.Random | None = None) -> Question:
         ),
     ]
 
+    meta_groups = [
+        {
+            "coeff": frac_to_raw(g.coeff),
+            "is_paren": g.is_paren,
+            "terms": [
+                [list(k), frac_to_raw(c)]
+                for k, c in sorted(
+                    g.inner.items(),
+                    key=lambda kv: (-sum(kv[0]), tuple(-e for e in kv[0])),
+                )
+            ],
+        }
+        for g in groups
+    ]
+
     return Question(
         topic="simplify",
         level=level,
@@ -271,10 +287,16 @@ def generate(level: int, rng: random.Random | None = None) -> Question:
         steps=steps,
         is_fraction=is_frac,
         is_decimal=False,
+        meta={"groups": meta_groups},
     )
 
 
-def grade(question: Question, student_input: str) -> GradeResult:
+def grade(
+    question: Question,
+    student_input: str,
+    *,
+    user_priors: dict[str, float] | None = None,
+) -> GradeResult:
     raw = student_input.strip()
     if not raw:
         return GradeResult("error", False, "请先输入你的化简结果。")
@@ -291,7 +313,14 @@ def grade(question: Question, student_input: str) -> GradeResult:
     expected_poly = expand(parse_expr(question.answer_raw))
 
     if student_poly != expected_poly:
-        return GradeResult("wrong", False, "结果不对，再检查一下符号或系数。", student_tex=student_tex)
+        diag = diagnose_simplify(question, student_poly, user_priors=user_priors)
+        return GradeResult(
+            "wrong",
+            False,
+            "结果不对，再检查一下符号或系数。",
+            student_tex=student_tex,
+            diagnosis=diag,
+        )
 
     if has_parentheses(student_node):
         return GradeResult(

@@ -168,7 +168,7 @@
             <div class="diag-bar-track"><div class="diag-bar-fill" style="width:${pct}%"></div></div>
           </div>`;
                 }).join('')
-                : '<p class="muted" style="margin:0;">暂无错因诊断记录（目前支持一元一次方程）</p>';
+                : '<p class="muted" style="margin:0;">暂无错因诊断记录（覆盖整式化简、一元一次方程与口算训练）</p>';
 
             const fb = s.diagnosis_feedback || { helpful: 0, unhelpful: 0 };
             const fbTotal = (fb.helpful || 0) + (fb.unhelpful || 0);

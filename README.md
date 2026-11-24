@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.12%2B-3776ab?logo=python&logoColor=white)](#技术架构)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](#技术架构)
 [![SQLite](https://img.shields.io/badge/SQLite-3-003b57?logo=sqlite&logoColor=white)](#数据库)
-[![Tests](https://img.shields.io/badge/tests-38%20passed-brightgreen)](#测试)
+[![Tests](https://img.shields.io/badge/tests-46%20passed-brightgreen)](#测试)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 **在线体验**：<https://math-tutor.gyf-time.cn> —— 学生可直接注册；老师注册需要服务端配置的管理员口令。
@@ -18,7 +18,8 @@
 
 math-tutor 的判题是**教学级**的：
 
-- **能分辨错因**。判题结果不止 `correct` / `wrong`，还有 `parentheses`（未去括号）、`unmerged`（未合并同类项）、`unisolated`（未移项）、`unreduced`（未约分）。看板会按错因聚合，老师和学生一眼能看出"这个孩子总是栽在去括号上"。
+- **能分辨结构错因**。判题结果不止 `correct` / `wrong`，还有 `parentheses`（未去括号）、`unmerged`（未合并同类项）、`unisolated`（未移项）、`unreduced`（未约分）。
+- **智能错因诊断（纯 Python 树模型）**。当学生数值/代数算错（`wrong`）时，系统结合题目结构正向模拟典型错法并提取数学差分特征，由离线训练导出的轻量 GBDT 模型（三题型合计约 `244 KB`，线上**零 `numpy`/`sklearn` 依赖**、单次推理 ~`0.12 ms`）推测具体错因（如「去分母漏乘整数项」「分配律漏乘后项」「乘方负号混淆」等）；遇到胡写或随机失误会诚实回退、绝不瞎猜，并支持「👍 猜中了 / 👎 不是这个」反馈回流再训练。
 - **零浮点误差**。全部数学逻辑用标准库 `fractions.Fraction` + 自研轻量表达式树实现，**刻意不引入 SymPy**——既保持零依赖，也避免浮点数比较带来的误判。
 - **分步解析**。每道题都带讲解步骤（化简 4 档难度、方程 5 步等价变形），答错 2 次自动弹出，不是简单丢一个答案。
 - **手机可用**。软键盘按题型定制，点屏幕按键**不会弹出系统键盘**；同一套键盘布局在三种题型里位置完全一致。
@@ -95,9 +96,42 @@ uv run uvicorn app.main:app --reload
 | 情形 | 判定 |
 |---|---|
 | 看了提示后仍做对 | **算对**（`used_hint=1`） |
+| 第 1 次答错、看错因提示后第 2 次改对 | **算对**（`result='correct', corrected=1`），但看板拆分展示**一次过率 / 纠错对**，并保留第 1 次的错因记录供老师追踪；第 1 次若为纯符号反错会自动模糊化防剧透 |
 | 主动点「看解析」 | **算错**（`gave_up=1, revealed=1`） |
 | 答错 2 次后自动弹出解析 | 不算"看解析"（`gave_up=0, revealed=1`） |
 | 格式错误 | 记录为 `error`，**不计入答错次数、不锁键盘**，统计聚合时自动排除 |
+
+---
+
+## 智能错因诊断与离线训练
+
+三类题型均已接入「**符号错因模拟 + 数学差分特征 + GBDT 树集成推理**」双层混合诊断架构，并叠加学生个人历史错因的温和贝叶斯先验（累积 ≥ 5 条已诊断错题后生效）用于多错因撞车消歧：
+
+| 题型 | 覆盖典型错因（不含兜底类） | 测试集准确率 / Macro F1 | 模型体积 | 纯 Python 耗时 |
+|---|---|---|---|---|
+| **整式化简** (`simplify`) | 7 类：去括号漏变号、分配律漏乘后项、合并加减符号错、漏抄/误消项、误合并非同类项、分数通分错、整体符号反 | `94.21%` / `0.9423` | `75.9 KB` | `0.117 ms` |
+| **一元一次方程** (`equation`) | 8 类：去分母漏乘整数项、去分母倍数错、去括号漏变号、去括号漏乘后项、移项忘变号、系数化为1颠倒、系数化为1误用加减、最终符号反 | `91.27%` / `0.9079` | `87.1 KB` | `0.131 ms` |
+| **口算训练** (`arithmetic`) | 8 类：运算顺序错、负数去括号/连减变号错、乘方负号/指数错、分数除法忘乘倒数、分数加减未通分、小数点位/进退位错、分配律漏乘/漏项、最终符号反 | `98.73%` / `0.9826` | `80.5 KB` | `0.127 ms` |
+
+每个模型都额外包含独立兜底类 `arithmetic_slip`（一般计算失误）；线上置信度低于 `45%` 或预测为兜底类时不弹出猜测，避免误导学生。
+
+### 本地重新训练 / 调参 / 混入真实反馈
+
+`scikit-learn` 仅声明在可选依赖组 `ml` 中，**不会打入 Docker 生产镜像**。本地折腾训练或用真实反馈微调模型：
+
+```bash
+# 安装开发 + 离线训练依赖
+uv sync --extra dev --extra ml
+
+# 一键重新训练并导出全部三个题型的 GBDT 模型
+uv run python scripts/train_diagnosis.py --topic all
+
+# 尝试切换 RandomForest 或调整超参数（纯 Python 推理器同时兼容 GBDT 与 RF）
+uv run python scripts/train_diagnosis.py --topic equation --model rf --n-estimators 50 --max-depth 10
+
+# 混入 SQLite 中用户点击过「👍 猜中了」的真实反馈样本重新训练
+uv run python scripts/train_diagnosis.py --topic all --db data/poly_drill.db --real-weight 5
+```
 
 ---
 
@@ -112,16 +146,25 @@ math-tutor/
 │   ├── auth.py              scrypt 哈希、Session Cookie、IP 登录限速
 │   ├── scoring.py           统计口径与 SQL 多维聚合（看板 / 自查共用）
 │   ├── engines/             纯 Python 数学引擎（零 Web 依赖）
-│   │   ├── types.py         统一数据契约（Question / GradeResult / Step）
+│   │   ├── types.py         统一数据契约（Question / GradeResult / DiagnosisResult / Step）
 │   │   ├── rational.py      Fraction 扩展、LaTeX 与小数格式化
 │   │   ├── expr_tree.py     递归下降解析器 + 表达式树（化简 / 方程共用）
 │   │   ├── simplify.py      整式化简引擎（4 档）
 │   │   ├── equation.py      一元一次方程引擎（4 档，5 步等价变形）
 │   │   └── arithmetic.py    口算引擎（4 档）
+│   ├── diagnosis/           纯 Python 错因诊断模块（零 ML 运行时依赖）
+│   │   ├── taxonomy.py      三题型错因分类体系与防剧透配置
+│   │   ├── *_sim.py         三题型错因正向模拟器与合成样本生成
+│   │   ├── *_features.py    三题型数学差分特征提取
+│   │   ├── tree_infer.py    纯 Python 树集成（GBDT / RF）推理器
+│   │   ├── predictor.py     模型懒加载、置信度回退与贝叶斯先验融合
+│   │   └── models/*.json    离线训练导出的轻量树模型（共约 244 KB）
 │   ├── routers/             页面路由与 API（pages / drill / auth / dashboard）
 │   ├── templates/           Jinja2 模板
 │   └── static/              app.css、drill.js、nav.js、本地 KaTeX
-└── tests/                   7 个测试文件，38 个用例
+├── scripts/
+│   └── train_diagnosis.py   离线训练、评估（混淆矩阵/特征重要性）与模型导出脚本
+└── tests/                   8 个测试文件，46 个用例
 ```
 
 **分层的关键在于 `engines/` 完全不知道 Web 的存在。** 它不 import FastAPI、不碰数据库、不碰模板，只做"生成题目"和"判题"两件事。这带来两个好处：
@@ -140,11 +183,12 @@ def grade(question: Question, student_input: str) -> GradeResult
 
 ## 数据库
 
-三张表，定义见 [`app/db.py`](app/db.py)（此处不复制 DDL，避免文档与代码漂移）：
+四张表，定义见 [`app/db.py`](app/db.py)（启动时自动兼容旧库平滑迁移新列，此处不复制 DDL，避免文档与代码漂移）：
 
 - **`users`** —— 账号。`role` 只有 `teacher` / `student`；老师额外持有唯一的 6 位 `invite_code`；学生用 `teacher_id` 关联老师。
 - **`sessions`** —— 登录会话，`sid` 存 Cookie `pd_sid`，带过期时间。
-- **`attempts`** —— 每次作答。`client_id` 是前端生成的幂等 ID（`INSERT OR IGNORE`，防止重复提交）；`result` 记录七种结果码之一；`used_hint` / `revealed` / `gave_up` 对应上面的计分口径。
+- **`attempts`** —— 每次锁题后的作答。`client_id` 是前端生成的幂等 ID（`INSERT OR IGNORE`，防止重复提交）；`result` 记录七种结果码之一；`used_hint` / `revealed` / `gave_up` / `corrected` 对应计分口径；`diagnosis_code` / `diagnosis_confidence` 记录错因诊断（含第 1 次出错、第 2 次改对时保留的首错诊断）。
+- **`diagnosis_logs`** —— 每次触发错因诊断的明细记录（含题目结构 `meta_json`、预测结果与用户「👍 / 👎」反馈），用于看板统计认可率以及离线增量再训练。
 
 两个索引分别服务「按时间倒序取最近记录」和「按题型 / 难度 / 结果过滤聚合」。数据库开启 WAL 模式与 `foreign_keys=ON`。
 
@@ -162,8 +206,9 @@ def grade(question: Question, student_input: str) -> GradeResult
 | `POST` | `/api/auth/logout` | 登出 |
 | `GET` | `/api/auth/me` | 当前登录用户 |
 | `GET` | `/api/drill/{topic}/next?level=N` | 出题，题目进内存 LRU 缓存，返回 `token` 与题面 |
-| `POST` | `/api/drill/{topic}/submit` | 判题；答对或错满 2 次自动落库并返回解析 |
+| `POST` | `/api/drill/{topic}/submit` | 判题并附带错因诊断 `diagnosis`；答对或错满 2 次自动落库并返回解析 |
 | `POST` | `/api/drill/{topic}/giveup` | 主动看解析（记为 `gave_up`） |
+| `POST` | `/api/drill/diagnosis/feedback` | 提交错因推测「猜中了 / 不是这个」反馈（校验记录归属本人） |
 | `GET` | `/api/attempts/me/summary?days=30` | 本人 KPI、题型 / 难度 / 错因分布 |
 | `GET` | `/api/attempts/me/recent?limit=30&only_wrong=false` | 本人最近记录 |
 | `GET` | `/api/teacher/students?days=30` | 名下学生汇总（仅教师） |
@@ -181,10 +226,11 @@ def grade(question: Question, student_input: str) -> GradeResult
 uv run --extra dev pytest -q
 ```
 
-当前 **38 passed**。测试构成：
+当前 **46 passed**。测试构成：
 
 - `test_expr_tree.py` —— 有理数与表达式树底座
 - `test_simplify.py` / `test_equation.py` / `test_arithmetic.py` —— 每个引擎 **1000 题模糊校验** + 判题全分支覆盖
+- `test_diagnosis.py` —— 三题型错因诊断、纯 Python GBDT/RF 推理、首错防剧透、纠错对首错保留、反馈权限隔离与旧库迁移
 - `test_auth.py` —— 认证与 IP 登录限速
 - `test_api.py` —— 完整练习链路 + 教师 / 学生权限隔离
 - `test_pages.py` —— 页面渲染回归（登录页切换结构、软键盘布局与键位一致性、触屏不误聚焦）

@@ -4,6 +4,7 @@ from fractions import Fraction
 import math
 import random
 
+from app.diagnosis.predictor import diagnose_arithmetic
 from app.engines.rational import (
     frac_to_decimal_str,
     frac_to_raw,
@@ -60,6 +61,7 @@ def _gen_l1(rng: random.Random) -> Question:
             Step("依次计算", step2_tex, "从左到右依次相加减。"),
         ]
         hint = "先去括号统一成加减法（如 -(-a) = +a），再从左到右计算。"
+        meta_extra: dict[str, object] = {"kind": "l1_add_sub", "a": a, "b": b, "c": c, "op1": op1, "op2": op2}
     else:
         # 整数乘除混合（保证整除）
         d = rng.choice([-6, -5, -4, -3, -2, 2, 3, 4, 5, 6])
@@ -75,6 +77,7 @@ def _gen_l1(rng: random.Random) -> Question:
             Step("再算乘法", str(ans), "同号得正，异号得负。"),
         ]
         hint = "乘除为同级运算，按从左到右顺序先算除法，注意确定最终符号。"
+        meta_extra = {"kind": "l1_mul_div", "a": a, "d": d, "c": c}
 
     ans_val = Fraction(ans)
     ans_raw, ans_tex = _fmt_ans(ans_val, is_decimal=False)
@@ -87,7 +90,7 @@ def _gen_l1(rng: random.Random) -> Question:
         answer_tex=ans_tex,
         hint=hint,
         steps=steps,
-        meta={"value": frac_to_raw(ans_val)},
+        meta={"value": frac_to_raw(ans_val), **meta_extra},
     )
 
 
@@ -114,6 +117,9 @@ def _gen_l2(rng: random.Random) -> Question:
             Step("得出结果", f"{frac_to_decimal_str(a + c)} + {sb} = {frac_to_decimal_str(ans)}"),
         ]
         hint = f"观察小数部分，可以先算 {sa} + {sc} 凑整。"
+        meta_extra: dict[str, object] = {
+            "kind": "l2_add_group", "a": frac_to_raw(a), "b": frac_to_raw(b), "c": frac_to_raw(c),
+        }
 
     elif kind == "sub_group":
         # a - b - c，其中 b + c 凑整
@@ -131,6 +137,9 @@ def _gen_l2(rng: random.Random) -> Question:
             Step("得出结果", f"{sa} - {frac_to_decimal_str(b + c)} = {frac_to_decimal_str(ans)}"),
         ]
         hint = f"把后两个减数合并：先算 {sb} + {sc} 凑整。"
+        meta_extra = {
+            "kind": "l2_sub_group", "a": frac_to_raw(a), "b": frac_to_raw(b), "c": frac_to_raw(c),
+        }
 
     elif kind == "mul_pair":
         # 0.25 * x * 4 或 1.25 * x * 8
@@ -146,6 +155,9 @@ def _gen_l2(rng: random.Random) -> Question:
             Step("得出结果", f"{frac_to_decimal_str(p1 * p2)} \\times {sm} = {frac_to_decimal_str(ans)}"),
         ]
         hint = f"先算 {s1} × {s2} 凑成整数，再乘以 {sm}。"
+        meta_extra = {
+            "kind": "l2_mul_pair", "p1": frac_to_raw(p1), "mid": frac_to_raw(mid), "p2": frac_to_raw(p2),
+        }
 
     else:
         # 乘法分配律：k * a + k * b，其中 a + b = 10
@@ -163,6 +175,9 @@ def _gen_l2(rng: random.Random) -> Question:
             Step("得出结果", f"{sk} \\times 10 = {frac_to_decimal_str(ans)}"),
         ]
         hint = f"两项都含有公因数 {sk}，提取出来后括号内正好凑成 10。"
+        meta_extra = {
+            "kind": "l2_dist_dec", "k": frac_to_raw(k), "a": frac_to_raw(a), "b": frac_to_raw(b),
+        }
 
     ans_raw, ans_tex = _fmt_ans(ans, is_decimal=True)
     return Question(
@@ -175,7 +190,7 @@ def _gen_l2(rng: random.Random) -> Question:
         hint=hint,
         steps=steps,
         is_decimal=True,
-        meta={"value": frac_to_raw(ans)},
+        meta={"value": frac_to_raw(ans), **meta_extra},
     )
 
 
@@ -218,6 +233,9 @@ def _gen_l3(rng: random.Random) -> Question:
             ),
         ]
         hint = f"先通分（公分母取 {lcm_d}），再把分子相加减，最后约分。"
+        meta_extra: dict[str, object] = {
+            "kind": "l3_frac_add_sub", "f1": frac_to_raw(f1), "f2": frac_to_raw(f2), "op": op,
+        }
     else:
         # 分数乘除混合
         f1 = _rand_frac(rng, [2, 3, 4, 5, 6])
@@ -241,6 +259,12 @@ def _gen_l3(rng: random.Random) -> Question:
             ),
         ]
         hint = "先把除法转化为乘以倒数，再确定正负号并交叉约分。"
+        meta_extra = {
+            "kind": "l3_frac_mul_div",
+            "f1": frac_to_raw(f1),
+            "f2": frac_to_raw(f2),
+            "f3": frac_to_raw(f3),
+        }
 
     ans_raw, ans_tex = _fmt_ans(ans, is_decimal=False)
     return Question(
@@ -253,7 +277,7 @@ def _gen_l3(rng: random.Random) -> Question:
         hint=hint,
         steps=steps,
         is_fraction=True,
-        meta={"value": frac_to_raw(ans)},
+        meta={"value": frac_to_raw(ans), **meta_extra},
     )
 
 
@@ -292,6 +316,15 @@ def _gen_l4(rng: random.Random) -> Question:
         ]
         hint = f"不要先通分！直接用乘法分配律把 {k} 乘进括号里，各项都能直接约成整数。"
         is_frac = True
+        meta_extra: dict[str, object] = {
+            "kind": "l4_dist_frac",
+            "k": k,
+            "f1": frac_to_raw(f1),
+            "f2": frac_to_raw(f2),
+            "f3": frac_to_raw(f3),
+            "op1": op1,
+            "op2": op2,
+        }
     else:
         # 含乘方的有理数混合运算，如 -2^2 + (-3)^2 * 2 - (-4)
         base1 = rng.choice([2, 3])
@@ -321,6 +354,15 @@ def _gen_l4(rng: random.Random) -> Question:
         ]
         hint = "按「先乘方、再乘除、后加减」的顺序计算，特别注意负号是否在括号内。"
         is_frac = False
+        meta_extra = {
+            "kind": "l4_power_mix",
+            "base1": base1,
+            "exp1": exp1,
+            "neg_outside": neg_outside,
+            "base2": base2,
+            "m": m,
+            "c": c,
+        }
 
     ans_raw, ans_tex = _fmt_ans(ans, is_decimal=False)
     return Question(
@@ -333,7 +375,7 @@ def _gen_l4(rng: random.Random) -> Question:
         hint=hint,
         steps=steps,
         is_fraction=is_frac,
-        meta={"value": frac_to_raw(ans)},
+        meta={"value": frac_to_raw(ans), **meta_extra},
     )
 
 
@@ -347,7 +389,12 @@ def generate(level: int, rng: random.Random | None = None) -> Question:
 
 # ---------- 判卷逻辑 ----------
 
-def grade(question: Question, student_input: str) -> GradeResult:
+def grade(
+    question: Question,
+    student_input: str,
+    *,
+    user_priors: dict[str, float] | None = None,
+) -> GradeResult:
     raw = (
         student_input.strip()
         .replace("−", "-")
@@ -374,7 +421,14 @@ def grade(question: Question, student_input: str) -> GradeResult:
         student_tex = frac_to_tex(val)
 
     if val != expected:
-        return GradeResult("wrong", False, "计算结果不正确，请检查符号或运算顺序。", student_tex)
+        diag = diagnose_arithmetic(question, val, user_priors=user_priors)
+        return GradeResult(
+            "wrong",
+            False,
+            "计算结果不正确，请检查符号或运算顺序。",
+            student_tex,
+            diagnosis=diag,
+        )
 
     if unreduced:
         return GradeResult(

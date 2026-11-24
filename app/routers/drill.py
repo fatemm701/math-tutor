@@ -202,12 +202,9 @@ def submit_answer(
     if not engine:
         raise HTTPException(status_code=404, detail="未知练习类型")
     q = _cache_get(body.token, user["id"])
-    if topic == "equation":
-        with get_conn() as conn:
-            priors = scoring.get_user_diagnosis_priors(conn, user["id"], topic="equation")
-        res = equation.grade(q, body.studentAnswer, user_priors=priors)
-    else:
-        res = engine.grade(q, body.studentAnswer)
+    with get_conn() as conn:
+        priors = scoring.get_user_diagnosis_priors(conn, user["id"], topic=topic)
+    res = engine.grade(q, body.studentAnswer, user_priors=priors)
 
     # 格式错不计入答错次数，允许继续修改
     is_format_error = res.result == "error"

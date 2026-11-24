@@ -9,14 +9,21 @@ from fastapi.testclient import TestClient
 from app.auth import login_limiter
 from app.db import init_db
 from app.diagnosis import (
+    DEFAULT_ARITHMETIC_MODEL_PATH,
     DEFAULT_EQUATION_MODEL_PATH,
+    DEFAULT_SIMPLIFY_MODEL_PATH,
     EQUATION_BUG_CODES,
+    diagnose_arithmetic,
     diagnose_equation,
+    diagnose_simplify,
+    load_arithmetic_model,
     load_equation_model,
+    load_simplify_model,
 )
 from app.diagnosis.equation_sim import analyze_equation_meta, simulate_bug_candidates
 from app.diagnosis.tree_infer import PureTreeModel
-from app.engines import equation
+from app.engines import arithmetic, equation, simplify
+from app.engines.expr_tree import expand, parse_expr
 from app.engines.types import Question
 from app.main import app
 
@@ -400,3 +407,152 @@ def test_option_c_spoiler_guard_and_corrected_attempt_preserves_diagnosis(monkey
     assert recent[0]["corrected"] == 1
     assert recent[0]["diagnosis_code"] == first_diag_code
     assert recent[0]["diagnosis_label"]
+
+
+def test_simplify_diagnosis_typical_misconceptions():
+    assert DEFAULT_SIMPLIFY_MODEL_PATH.exists()
+    assert load_simplify_model(force_reload=True) is not None
+
+    # 2(3x - 4) - (x - 5) = 5x - 3
+    q = Question(
+        topic="simplify",
+        level=2,
+        prompt_raw="2(3x - 4) - (x - 5)",
+        prompt_tex="2(3x - 4) - (x - 5)",
+        answer_raw="5x - 3",
+        answer_tex="5x - 3",
+        hint="",
+        steps=[],
+        meta={
+            "groups": [
+                {"coeff": "2", "is_paren": True, "terms": [[[1, 0, 0, 0], "3"], [[0, 0, 0, 0], "-4"]]},
+                {"coeff": "-1", "is_paren": True, "terms": [[[1, 0, 0, 0], "1"], [[0, 0, 0, 0], "-5"]]},
+            ]
+        },
+    )
+
+    # 1. 去括号漏变号: -(x - 5) 错展成 -x - 5 => 6x - 8 - x - 5 = 5x - 13
+    r_ps = simplify.grade(q, "5x - 13")
+    assert r_ps.result == "wrong" and r_ps.diagnosis is not None
+    assert r_ps.diagnosis.code == "simp_paren_sign"
+
+    # 2. 分配律漏乘后项: 2(3x - 4) 错展成 6x - 4 => 6x - 4 - x + 5 = 5x + 1
+    r_om = simplify.grade(q, "5x + 1")
+    assert r_om.result == "wrong" and r_om.diagnosis is not None
+    assert r_om.diagnosis.code == "simp_omit_mul"
+
+    # 3. 误合并非同类项: 5x - 3 错并成 2x
+    r_mix = simplify.grade(q, "2x")
+    assert r_mix.result == "wrong" and r_mix.diagnosis is not None
+    assert r_mix.diagnosis.code == "simp_mix_unlike"
+
+    # 4. 整体符号弄反: -5x + 3
+    r_sign = simplify.grade(q, "-5x + 3")
+    assert r_sign.result == "wrong" and r_sign.diagnosis is not None
+    assert r_sign.diagnosis.code == "simp_sign_all"
+
+    # 5. 明显胡写应回退 None
+    r_rand = simplify.grade(q, "99x^2 - 77x + 123")
+    assert r_rand.result == "wrong" and r_rand.diagnosis is None
+
+
+def test_arithmetic_diagnosis_typical_misconceptions():
+    assert DEFAULT_ARITHMETIC_MODEL_PATH.exists()
+    assert load_arithmetic_model(force_reload=True) is not None
+
+    # 1. L1 整数乘除: (-12) / 3 * 2 = -8，先算后面乘法得 -12 / 6 = -2
+    q_order = Question(
+        topic="arithmetic",
+        level=1,
+        prompt_raw="(-12) / 3 * 2",
+        prompt_tex="(-12) \\div 3 \\times 2",
+        answer_raw="-8",
+        answer_tex="-8",
+        hint="",
+        steps=[],
+        meta={"value": "-8", "kind": "l1_mul_div", "a": -12, "d": 3, "c": 2},
+    )
+    r_ord = arithmetic.grade(q_order, "-2")
+    assert r_ord.result == "wrong" and r_ord.diagnosis is not None
+    assert r_ord.diagnosis.code == "arith_order_ops"
+
+    # 2. L3 异分母分数加减: 1/2 + 1/3 = 5/6，分子分母直接相加得 2/5
+    q_frac = Question(
+        topic="arithmetic",
+        level=3,
+        prompt_raw="1/2 + 1/3",
+        prompt_tex="\\dfrac{1}{2} + \\dfrac{1}{3}",
+        answer_raw="5/6",
+        answer_tex="\\dfrac{5}{6}",
+        hint="",
+        steps=[],
+        is_fraction=True,
+        meta={"value": "5/6", "kind": "l3_frac_add_sub", "f1": "1/2", "f2": "1/3", "op": "+"},
+    )
+    r_fr = arithmetic.grade(q_frac, "2/5")
+    assert r_fr.result == "wrong" and r_fr.diagnosis is not None
+    assert r_fr.diagnosis.code == "arith_frac_add_raw"
+
+    # 3. L3 分数乘除: 2/3 / (4/5) * (1/2) = 5/12，忘取倒数直接乘得 4/15
+    q_fdiv = Question(
+        topic="arithmetic",
+        level=3,
+        prompt_raw="2/3 / 4/5 * 1/2",
+        prompt_tex="\\dfrac{2}{3} \\div \\dfrac{4}{5} \\times \\dfrac{1}{2}",
+        answer_raw="5/12",
+        answer_tex="\\dfrac{5}{12}",
+        hint="",
+        steps=[],
+        is_fraction=True,
+        meta={"value": "5/12", "kind": "l3_frac_mul_div", "f1": "2/3", "f2": "4/5", "f3": "1/2"},
+    )
+    r_fd = arithmetic.grade(q_fdiv, "4/15")
+    assert r_fd.result == "wrong" and r_fd.diagnosis is not None
+    assert r_fd.diagnosis.code == "arith_frac_div_no_inv"
+
+    # 4. L4 乘方混合: -2^2 + (-3)^2 * 2 - (-4) = -4 + 18 + 4 = 18
+    # 混淆 -2^2 为 +4 => 4 + 18 + 4 = 26
+    q_pow = Question(
+        topic="arithmetic",
+        level=4,
+        prompt_raw="-2^2 + (-3)^2 * 2 - (-4)",
+        prompt_tex="-2^{2} + (-3)^{2} \\times 2 - (-4)",
+        answer_raw="18",
+        answer_tex="18",
+        hint="",
+        steps=[],
+        meta={
+            "value": "18",
+            "kind": "l4_power_mix",
+            "base1": 2,
+            "exp1": 2,
+            "neg_outside": True,
+            "base2": -3,
+            "m": 2,
+            "c": -4,
+        },
+    )
+    r_pow = arithmetic.grade(q_pow, "26")
+    assert r_pow.result == "wrong" and r_pow.diagnosis is not None
+    assert r_pow.diagnosis.code == "arith_power_sign"
+
+    # 5. L2 小数凑整: 0.25 * 3.2 * 4 = 3.2，小数点位错算成 32
+    q_dec = Question(
+        topic="arithmetic",
+        level=2,
+        prompt_raw="0.25 * 3.2 * 4",
+        prompt_tex="0.25 \\times 3.2 \\times 4",
+        answer_raw="3.2",
+        answer_tex="3.2",
+        hint="",
+        steps=[],
+        is_decimal=True,
+        meta={"value": "16/5", "kind": "l2_mul_pair", "p1": "1/4", "mid": "16/5", "p2": "4"},
+    )
+    r_dec = arithmetic.grade(q_dec, "32")
+    assert r_dec.result == "wrong" and r_dec.diagnosis is not None
+    assert r_dec.diagnosis.code == "arith_decimal_place"
+
+    # 6. 随机胡写应回退 None
+    r_rand = arithmetic.grade(q_pow, "777")
+    assert r_rand.result == "wrong" and r_rand.diagnosis is None

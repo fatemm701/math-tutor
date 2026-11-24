@@ -4,7 +4,7 @@ import sqlite3
 import time
 from typing import Any
 
-from app.diagnosis.taxonomy import EQUATION_BUG_CODES, get_diagnosis_label
+from app.diagnosis.taxonomy import get_bug_codes_for_topic, get_diagnosis_label
 
 
 def get_user_diagnosis_priors(
@@ -17,6 +17,9 @@ def get_user_diagnosis_priors(
     基于该学生最近已诊断的错题记录计算平滑后的错因先验分布。
     样本数不足 5 条时返回 None（沿用模型默认分布）。
     """
+    bug_codes = get_bug_codes_for_topic(topic)
+    if not bug_codes:
+        return None
     rows = conn.execute(
         """
         SELECT diagnosis_code
@@ -29,7 +32,7 @@ def get_user_diagnosis_priors(
     ).fetchall()
     if len(rows) < 5:
         return None
-    counts = {c: 1.0 for c in EQUATION_BUG_CODES}
+    counts = {c: 1.0 for c in bug_codes}
     for r in rows:
         code = r["diagnosis_code"]
         if code in counts:
